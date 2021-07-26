@@ -1,0 +1,6 @@
+target/*
+fuzz/*
+.git/*
+.github/*
+.gitignore
+README.md
