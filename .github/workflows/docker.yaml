@@ -14,7 +14,7 @@ jobs:
         id: docker_meta
         uses: crazy-max/ghaction-docker-meta@v1
         with:
-          images: lol3r/waswolf 
+          images: ghcr.io/lol3rrr/waswolf 
           tag-latest: true
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v1
