@@ -225,11 +225,23 @@ async fn werewolf(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
 
     let entry_msg = format!("Creating new Round.\nReact with:\n{}: Enter as a Player\n{}: Enter as a Moderator\n{}: Start the Round itself", Reactions::Entry, Reactions::ModEntry, Reactions::Confirm);
 
-    let result = channel_id.say(&ctx.http, entry_msg).await.unwrap();
+    let result = match channel_id
+        .send_message(&ctx.http, |m| {
+            m.content(entry_msg).reactions(&[
+                Reactions::Entry,
+                Reactions::ModEntry,
+                Reactions::Confirm,
+            ])
+        })
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!("Sending New-Round Message: {:?}", e);
+            return Ok(());
+        }
+    };
     let msg_id = result.id;
-    result.react(&ctx.http, Reactions::Entry).await.unwrap();
-    result.react(&ctx.http, Reactions::ModEntry).await.unwrap();
-    result.react(&ctx.http, Reactions::Confirm).await.unwrap();
 
     rounds.insert(
         guild_id,
