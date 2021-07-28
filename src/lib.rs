@@ -14,6 +14,7 @@ use serenity::{
         prelude::Activity,
     },
     prelude::{Mutex, TypeMapKey},
+    utils::Color,
     Client,
 };
 
@@ -38,6 +39,8 @@ struct Handler {
     id: UserId,
 }
 
+const PREFIX: &str = "/";
+
 #[async_trait]
 impl EventHandler for Handler {
     async fn ready(
@@ -45,7 +48,7 @@ impl EventHandler for Handler {
         ctx: serenity::client::Context,
         _data_about_bot: serenity::model::prelude::Ready,
     ) {
-        ctx.set_activity(Activity::playing("Rawr")).await;
+        ctx.set_activity(Activity::listening(PREFIX)).await;
 
         tracing::info!("Bot is ready");
     }
@@ -64,7 +67,23 @@ impl EventHandler for Handler {
         };
 
         let mut round = round_mutex.lock().await;
-        round.handle_add_react(&ctx, add_reaction.clone()).await;
+        match round.handle_add_react(&ctx, add_reaction.clone()).await {
+            Ok(_) => {}
+            Err(e) => {
+                tracing::error!("Handling Reaction for Round: {}", e);
+                let error_msg = format!("Error handling Round: {}", e);
+                round.update_msg(&ctx, &error_msg).await;
+
+                drop(round);
+                drop(rounds);
+                drop(data);
+                let mut data = ctx.data.write().await;
+                let rounds = data.get_mut::<Rounds>().unwrap();
+                rounds.remove_from_reaction(&add_reaction);
+
+                return;
+            }
+        };
 
         if !round.is_done() {
             return;
@@ -142,7 +161,9 @@ impl EventHandler for Handler {
         new: serenity::model::guild::Member,
     ) {
         let data = ctx.data.read().await;
-        let rounds = data.get::<Rounds>().unwrap();
+        let rounds = data
+            .get::<Rounds>()
+            .expect("The general Rounds-Map should always exist");
         match rounds.get(&new.guild_id) {
             Some(round_mutex) => {
                 let mut round = round_mutex.lock().await;
@@ -155,11 +176,11 @@ impl EventHandler for Handler {
 }
 
 #[group]
-#[commands(new_round)]
+#[commands(help, werewolf)]
 struct General;
 
 #[command]
-async fn new_round(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
+async fn werewolf(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
     let guild_id = msg.guild_id.unwrap();
     let channel_id = msg.channel_id;
 
@@ -201,12 +222,33 @@ async fn new_round(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
     Ok(())
 }
 
+#[command]
+async fn help(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
+    tracing::debug!("Help Command");
+
+    if let Err(e) = msg
+        .channel_id
+        .send_message(&ctx.http, |m| {
+            m.embed(|e| {
+                e.title("Commands")
+                    .field("werewolf", "Starts a new Werewolf-Round", false)
+                    .color(Color::from_rgb(130, 10, 10))
+            })
+        })
+        .await
+    {
+        tracing::error!("Sending Help-Message: {:?}", e);
+    }
+
+    Ok(())
+}
+
 /// Actually starts the Bot itself
 pub async fn start(token: String) {
     tracing::info!("Starting Bot...");
 
     let framework = StandardFramework::new()
-        .configure(|c| c.with_whitespace(true).prefix("/"))
+        .configure(|c| c.with_whitespace(false).prefix(PREFIX))
         .group(&GENERAL_GROUP);
 
     let http = Http::new_with_token(&token);

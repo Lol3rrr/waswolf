@@ -52,8 +52,18 @@ impl Round {
     }
 
     #[tracing::instrument(skip(self, ctx, reaction))]
-    pub async fn handle_add_react(&mut self, ctx: &Context, reaction: Reaction) {
-        self.sm = self.sm.clone().step_add_react(ctx, reaction).await;
+    pub async fn handle_add_react(
+        &mut self,
+        ctx: &Context,
+        reaction: Reaction,
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+        match self.sm.clone().step_add_react(ctx, reaction).await {
+            Ok(nsm) => {
+                self.sm = nsm;
+                Ok(())
+            }
+            Err(e) => Err(e),
+        }
     }
 
     #[tracing::instrument(skip(self, _ctx, reaction))]
@@ -72,6 +82,13 @@ impl Round {
 
     pub fn is_done(&self) -> bool {
         self.sm.is_done()
+    }
+
+    #[tracing::instrument(skip(self, ctx, msg))]
+    pub async fn update_msg(&self, ctx: &Context, msg: &str) {
+        if let Err(e) = self.sm.update_msg(ctx, msg).await {
+            tracing::error!("{:?}", e);
+        }
     }
 }
 

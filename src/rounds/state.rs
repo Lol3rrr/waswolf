@@ -1,7 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     error::Error,
-    fmt::Display,
 };
 
 use serenity::{
@@ -34,23 +33,25 @@ pub struct RoundState<S> {
 const DEAD_ROLE_NAME: &str = "W-Dead";
 
 impl<S> RoundState<S> {
-    async fn get_msg(&self, ctx: &Context) -> Message {
-        self.channel.message(&ctx.http, self.message).await.unwrap()
+    async fn get_msg(&self, ctx: &Context) -> Result<Message, serenity::Error> {
+        self.channel.message(&ctx.http, self.message).await
     }
-    async fn update_msg(&self, ctx: &Context, msg: &str, reactions: &[Reactions]) -> Message {
-        let mut cfg_message = self.get_msg(ctx).await;
+    pub async fn update_msg(
+        &self,
+        ctx: &Context,
+        msg: &str,
+        reactions: &[Reactions],
+    ) -> Result<Message, serenity::Error> {
+        let mut cfg_message = self.get_msg(ctx).await?;
 
-        cfg_message.delete_reactions(&ctx.http).await.unwrap();
-        cfg_message
-            .edit(&ctx.http, |m| m.content(msg))
-            .await
-            .unwrap();
+        cfg_message.delete_reactions(&ctx.http).await?;
+        cfg_message.edit(&ctx.http, |m| m.content(msg)).await?;
 
         for reaction in reactions {
-            cfg_message.react(&ctx.http, reaction).await.unwrap();
+            cfg_message.react(&ctx.http, reaction).await?;
         }
 
-        cfg_message
+        Ok(cfg_message)
     }
 
     /// Checks if the given User is registered as an Owner
@@ -200,7 +201,7 @@ impl RoundState<RegisterRoles> {
     }
 
     async fn update_page(&mut self, ctx: &Context) {
-        let cfg_message = self.get_msg(ctx).await;
+        let cfg_message = self.get_msg(ctx).await.unwrap();
         cfg_message.delete_reactions(&ctx.http).await.unwrap();
 
         let w_roles = WereWolfRole::all_roles();
@@ -287,28 +288,18 @@ impl RoundState<Ongoing> {
         user.roles.iter().find(|r_id| **r_id == dead_role).is_some()
     }
 
+    #[tracing::instrument(skip(self, ctx, user))]
     pub async fn clear_permissions(&self, ctx: &Context, user: UserId) {
         for channel_id in self.state.channels.values() {
-            channel_id
+            if let Err(e) = channel_id
                 .delete_permission(&ctx.http, PermissionOverwriteType::Member(user))
                 .await
-                .unwrap();
+            {
+                tracing::error!("{:?}", e);
+            }
         }
     }
 }
-
-#[derive(Debug, PartialEq)]
-pub enum ToOngoingTransitionError {
-    Distributing,
-}
-impl Display for ToOngoingTransitionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Distributing => write!(f, "Distributing"),
-        }
-    }
-}
-impl Error for ToOngoingTransitionError {}
 
 #[async_trait]
 impl Transition<RoundState<RegisterUsers>> for RoundState<RegisterRoles> {
@@ -326,7 +317,10 @@ impl Transition<RoundState<RegisterUsers>> for RoundState<RegisterRoles> {
         let w_roles = WereWolfRole::all_roles();
         let roles_msg = roles::get_roles_msg(&w_roles);
 
-        let cfg_message = source.update_msg(context.ctx, &roles_msg, &[]).await;
+        let cfg_message = source
+            .update_msg(context.ctx, &roles_msg, &[])
+            .await
+            .unwrap();
 
         let page = 0;
         roles::cfg_role_msg_reactions(&cfg_message, context.ctx, &w_roles, page).await;
@@ -375,7 +369,8 @@ impl Transition<RoundState<RegisterRoles>> for RoundState<RoleCounts> {
 
         source
             .update_msg(context.ctx, "Configuring Roles..", &[])
-            .await;
+            .await
+            .unwrap();
 
         let role_map = {
             let mut tmp = BTreeMap::new();
@@ -412,7 +407,7 @@ impl TryTransition<RoundState<RoleCounts>> for RoundState<Ongoing> {
             match start::start(&source, DEAD_ROLE_NAME, dead_role_id, context.ctx).await {
                 Ok(d) => d,
                 Err(e) => {
-                    return Err(e);
+                    return Err(Box::new(e));
                 }
             };
 
@@ -422,7 +417,8 @@ impl TryTransition<RoundState<RoleCounts>> for RoundState<Ongoing> {
         );
         source
             .update_msg(context.ctx, &msg, &[Reactions::Stop])
-            .await;
+            .await
+            .unwrap();
 
         Ok(RoundState {
             owner: source.owner,
@@ -454,7 +450,8 @@ impl Transition<RoundState<Ongoing>> for RoundState<Done> {
 
         source
             .update_msg(context.ctx, "The Round has completed", &[])
-            .await;
+            .await
+            .unwrap();
 
         RoundState {
             owner: source.owner,

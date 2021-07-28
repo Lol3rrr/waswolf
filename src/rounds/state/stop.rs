@@ -22,7 +22,9 @@ pub async fn stop(
     channels: &BTreeMap<String, ChannelId>,
 ) {
     let guild_channel = guild.channels(&ctx.http).await.unwrap();
-    let inactive_category_id = channels::setup_inactive_category(ctx, &guild, &guild_channel).await;
+    let inactive_category_id = channels::setup_inactive_category(ctx, &guild, &guild_channel)
+        .await
+        .unwrap();
 
     // Cleanup all the Role-Channels
     for (_, channel) in channels.iter() {

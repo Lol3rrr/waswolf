@@ -39,8 +39,22 @@ impl RoundSM {
         Self::RegisterUsers(RoundState::new(owner, message_id, channel, guild_id))
     }
 
+    pub async fn update_msg(&self, ctx: &Context, msg: &str) -> Result<Message, serenity::Error> {
+        match self {
+            Self::RegisterUsers(state) => state.update_msg(ctx, msg, &[]).await,
+            Self::RegisterRoles(state) => state.update_msg(ctx, msg, &[]).await,
+            Self::RoleCounts(state) => state.update_msg(ctx, msg, &[]).await,
+            Self::Ongoing(state) => state.update_msg(ctx, msg, &[]).await,
+            Self::Done(state) => state.update_msg(ctx, msg, &[]).await,
+        }
+    }
+
     #[tracing::instrument(skip(self, ctx, reaction))]
-    pub async fn step_add_react(self, ctx: &Context, reaction: Reaction) -> Self {
+    pub async fn step_add_react(
+        self,
+        ctx: &Context,
+        reaction: Reaction,
+    ) -> Result<Self, Box<dyn Error + Send + Sync>> {
         let user_id = reaction.user_id.unwrap();
         let react_data = reaction.emoji;
 
@@ -50,28 +64,28 @@ impl RoundSM {
                     state.add_participant(user_id);
 
                     tracing::debug!("Added User({:?}) to Round", user_id);
-                    return Self::RegisterUsers(state);
+                    return Ok(Self::RegisterUsers(state));
                 }
                 if Reactions::ModEntry == react_data {
                     state.add_moderator(user_id);
 
                     tracing::debug!("Added Moderator({:?}) to Round", user_id);
-                    return Self::RegisterUsers(state);
+                    return Ok(Self::RegisterUsers(state));
                 }
 
                 if Reactions::Confirm == react_data {
                     if !state.is_owner(&user_id) {
                         tracing::error!("Non-Owner attempted to start Round");
-                        return Self::RegisterUsers(state);
+                        return Ok(Self::RegisterUsers(state));
                     }
 
                     tracing::debug!("Confirmed Round");
                     let nstate: RoundState<RegisterRoles> =
                         Transition::transition(state, TransitionContext { ctx }).await;
-                    return Self::RegisterRoles(nstate);
+                    return Ok(Self::RegisterRoles(nstate));
                 }
 
-                Self::RegisterUsers(state)
+                Ok(Self::RegisterUsers(state))
             }
             Self::RegisterRoles(mut state) => {
                 if Reactions::Confirm == react_data {
@@ -81,7 +95,7 @@ impl RoundSM {
                         Transition::transition(state, TransitionContext { ctx }).await;
 
                     if needs_role_config {
-                        return Self::RoleCounts(nstate);
+                        return Ok(Self::RoleCounts(nstate));
                     } else {
                         let nstate: RoundState<Ongoing> =
                             match TryTransition::try_transition(nstate, TransitionContext { ctx })
@@ -90,32 +104,32 @@ impl RoundSM {
                                 Ok(n) => n,
                                 Err(e) => {
                                     tracing::error!("Transitioning {:?}", e);
-                                    panic!("");
+                                    return Err(e);
                                 }
                             };
-                        return Self::Ongoing(nstate);
+                        return Ok(Self::Ongoing(nstate));
                     }
                 }
 
                 if Reactions::NextPage == react_data {
                     if !state.is_owner(&user_id) {
                         tracing::error!("Non-Owner attempted to switch Pages");
-                        return Self::RegisterRoles(state);
+                        return Ok(Self::RegisterRoles(state));
                     }
 
                     state.next_page(ctx).await;
 
-                    return Self::RegisterRoles(state);
+                    return Ok(Self::RegisterRoles(state));
                 }
                 if Reactions::PreviousPage == react_data {
                     if !state.is_owner(&user_id) {
                         tracing::error!("Non-Owner attempted to switch Pages");
-                        return Self::RegisterRoles(state);
+                        return Ok(Self::RegisterRoles(state));
                     }
 
                     state.previous_page(ctx).await;
 
-                    return Self::RegisterRoles(state);
+                    return Ok(Self::RegisterRoles(state));
                 }
 
                 match WereWolfRole::from_emoji(react_data.clone()) {
@@ -123,27 +137,27 @@ impl RoundSM {
                         tracing::info!("Added Role({:?}) to Round", role);
                         state.add_role(role);
 
-                        Self::RegisterRoles(state)
+                        Ok(Self::RegisterRoles(state))
                     }
                     None => {
                         tracing::error!("Unknown Role: {:?}", react_data);
-                        Self::RegisterRoles(state)
+                        Ok(Self::RegisterRoles(state))
                     }
                 }
             }
-            Self::RoleCounts(state) => Self::RoleCounts(state),
+            Self::RoleCounts(state) => Ok(Self::RoleCounts(state)),
             Self::Ongoing(state) => {
                 if Reactions::Stop == react_data {
                     tracing::info!("Stopping/Ending Round");
 
                     let nstate: RoundState<Done> =
                         Transition::transition(state, TransitionContext { ctx }).await;
-                    return Self::Done(nstate);
+                    return Ok(Self::Done(nstate));
                 }
 
-                Self::Ongoing(state)
+                Ok(Self::Ongoing(state))
             }
-            Self::Done(state) => Self::Done(state),
+            Self::Done(state) => Ok(Self::Done(state)),
         }
     }
 
@@ -221,6 +235,7 @@ impl RoundSM {
         }
     }
 
+    /// Checks if the given User is marked as Dead for the current Round
     pub async fn is_dead(&self, ctx: &Context, user: &Member) -> bool {
         match self {
             Self::Ongoing(state) => state.is_dead(ctx, user).await,

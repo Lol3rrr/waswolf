@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, error::Error};
+use std::{collections::BTreeMap, error::Error, fmt::Display};
 
 use serenity::{
     client::Context,
@@ -9,13 +9,12 @@ use serenity::{
     },
 };
 
-use crate::{
-    roles::{self, WereWolfRole},
-    rounds::state::ToOngoingTransitionError,
-};
+use crate::roles::{self, WereWolfRole};
 
 use super::{channels, RoleCounts, RoundState};
 
+/// Generates the Permission-Settings to allow the given User to access
+/// whatever this is applied to
 fn channel_access_permissions(user: UserId) -> PermissionOverwrite {
     PermissionOverwrite {
         allow: Permissions::READ_MESSAGES | Permissions::SEND_MESSAGES,
@@ -23,6 +22,32 @@ fn channel_access_permissions(user: UserId) -> PermissionOverwrite {
         kind: PermissionOverwriteType::Member(user),
     }
 }
+
+#[derive(Debug, PartialEq)]
+pub enum StartError {
+    LoadingChannels,
+    SettingUpCategory,
+    SettingUpChannels,
+    SettingUpModeratorChannel,
+    DistributingRoles,
+    AssignRolePermissions,
+}
+
+impl Display for StartError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::LoadingChannels => write!(f, "Loading Guild Channels"),
+            Self::SettingUpCategory => write!(f, "Setting up Category for active Roles"),
+            Self::SettingUpChannels => write!(f, "Setting up Channels for active Roles"),
+            Self::SettingUpModeratorChannel => write!(f, "Setting up Channel for the Moderators"),
+            Self::DistributingRoles => write!(f, "Distributing Roles to Players"),
+            Self::AssignRolePermissions => {
+                write!(f, "Assigning Role-Permissions to Users and Channels")
+            }
+        }
+    }
+}
+impl Error for StartError {}
 
 /// Handles all the Setup-Stuff for starting the actual Round based on the
 /// Configuration
@@ -38,7 +63,7 @@ pub async fn start(
         ChannelId,
         BTreeMap<String, ChannelId>,
     ),
-    Box<dyn Error + Send + Sync>,
+    StartError,
 > {
     let default_permissions: Vec<PermissionOverwrite> = {
         let mut tmp: Vec<PermissionOverwrite> = source
@@ -61,10 +86,15 @@ pub async fn start(
         tmp
     };
 
-    let guild_channel = source.guild.channels(&ctx.http).await.unwrap();
+    let guild_channel = source
+        .guild
+        .channels(&ctx.http)
+        .await
+        .map_err(|_| StartError::LoadingChannels)?;
 
-    let active_category_id =
-        channels::setup_active_category(ctx, &source.guild, &guild_channel).await;
+    let active_category_id = channels::setup_active_category(ctx, &source.guild, &guild_channel)
+        .await
+        .map_err(|_| StartError::SettingUpCategory)?;
 
     let role_iter = source.state.roles.iter().map(|(role, _)| role);
     let role_channel = channels::setup_role_channels(
@@ -76,7 +106,8 @@ pub async fn start(
         ctx,
         &source.owner,
     )
-    .await;
+    .await
+    .map_err(|_| StartError::SettingUpChannels)?;
 
     let mod_channel = channels::setup_moderator_channel(
         default_permissions,
@@ -86,32 +117,28 @@ pub async fn start(
         ctx,
         &source.owner,
     )
-    .await;
+    .await
+    .map_err(|_| StartError::SettingUpModeratorChannel)?;
 
-    let participants = match roles::distribute_roles(
+    let participants = roles::distribute_roles(
         source.state.participants.clone(),
         source.state.roles.clone(),
-    ) {
-        Ok(p) => p,
-        Err(e) => {
-            tracing::error!("Distributing the Roles to the Participants");
-            return Err(
-                Box::new(ToOngoingTransitionError::Distributing) as Box<dyn Error + Send + Sync>
-            );
-        }
-    };
+    )
+    .map_err(|_| StartError::DistributingRoles)?;
 
+    // Set the Permissions for the Users and their corresponding Role-Channels
     for (user_id, role) in participants.iter() {
         let access_permissions = channel_access_permissions(user_id.clone());
 
-        let role_channels = role.channels();
-        for tmp_c in role_channels {
-            let channel = role_channel.get(&tmp_c).unwrap();
+        for tmp_c in role.channels() {
+            let channel = role_channel
+                .get(&tmp_c)
+                .expect("There should be a Channel for the Role available");
 
             channel
                 .create_permission(&ctx.http, &access_permissions)
                 .await
-                .unwrap();
+                .map_err(|_| StartError::AssignRolePermissions)?;
         }
     }
 
@@ -127,13 +154,19 @@ Once the Round is over, the Bot will automatically remove all the Round-Relevant
 and reorganize the relevant Channels to prepare for the next Round.
             ```", dead_role_name
         );
-        mod_channel.say(&ctx.http, info_msg).await.unwrap();
+        mod_channel
+            .say(&ctx.http, info_msg)
+            .await
+            .map_err(|_| StartError::SettingUpModeratorChannel)?;
 
         let msg = {
             let mut tmp = "Roles:\n".to_string();
 
             for (user_id, role) in participants.iter() {
-                let user = user_id.to_user(&ctx.http).await.unwrap();
+                let user = user_id
+                    .to_user(&ctx.http)
+                    .await
+                    .map_err(|_| StartError::SettingUpModeratorChannel)?;
                 let name = user.name;
 
                 tmp.push_str(&format!("{}: {:?}\n", name, role));
@@ -141,7 +174,10 @@ and reorganize the relevant Channels to prepare for the next Round.
 
             tmp
         };
-        mod_channel.say(&ctx.http, msg).await.unwrap();
+        mod_channel
+            .say(&ctx.http, msg)
+            .await
+            .map_err(|_| StartError::SettingUpModeratorChannel)?;
     }
 
     Ok((participants, mod_channel, role_channel))
