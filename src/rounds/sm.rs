@@ -1,5 +1,3 @@
-use std::error::Error;
-
 use serenity::{
     client::Context,
     model::{
@@ -9,14 +7,11 @@ use serenity::{
     },
 };
 
-use crate::{
-    roles::WereWolfRole,
-    rounds::state::{Transition, TransitionContext},
-    Reactions,
-};
+use crate::{roles::WereWolfRole, rounds::state::TransitionContext, Reactions};
 
 use super::state::{
-    Done, Ongoing, RegisterRoles, RegisterUsers, RoleCounts, RoundState, TryTransition,
+    Done, Ongoing, RegisterRoles, RegisterUsers, RoleCounts, RoundState, TransitionError,
+    TryTransition,
 };
 
 #[derive(Debug, Clone)]
@@ -54,8 +49,10 @@ impl RoundSM {
         self,
         ctx: &Context,
         reaction: Reaction,
-    ) -> Result<Self, Box<dyn Error + Send + Sync>> {
-        let user_id = reaction.user_id.unwrap();
+    ) -> Result<Self, TransitionError> {
+        let user_id = reaction
+            .user_id
+            .expect("The User-ID should always be set for Reactions in this case");
         let react_data = reaction.emoji;
 
         match self {
@@ -81,7 +78,7 @@ impl RoundSM {
 
                     tracing::debug!("Confirmed Round");
                     let nstate: RoundState<RegisterRoles> =
-                        Transition::transition(state, TransitionContext { ctx }).await;
+                        TryTransition::try_transition(state, TransitionContext { ctx }).await?;
                     return Ok(Self::RegisterRoles(nstate));
                 }
 
@@ -92,7 +89,7 @@ impl RoundSM {
                     let needs_role_config = state.needs_role_count_config();
 
                     let nstate: RoundState<RoleCounts> =
-                        Transition::transition(state, TransitionContext { ctx }).await;
+                        TryTransition::try_transition(state, TransitionContext { ctx }).await?;
 
                     if needs_role_config {
                         return Ok(Self::RoleCounts(nstate));
@@ -117,7 +114,10 @@ impl RoundSM {
                         return Ok(Self::RegisterRoles(state));
                     }
 
-                    state.next_page(ctx).await;
+                    state
+                        .next_page(ctx)
+                        .await
+                        .map_err(|e| TransitionError::new(e))?;
 
                     return Ok(Self::RegisterRoles(state));
                 }
@@ -127,7 +127,10 @@ impl RoundSM {
                         return Ok(Self::RegisterRoles(state));
                     }
 
-                    state.previous_page(ctx).await;
+                    state
+                        .previous_page(ctx)
+                        .await
+                        .map_err(|e| TransitionError::new(e))?;
 
                     return Ok(Self::RegisterRoles(state));
                 }
@@ -151,7 +154,7 @@ impl RoundSM {
                     tracing::info!("Stopping/Ending Round");
 
                     let nstate: RoundState<Done> =
-                        Transition::transition(state, TransitionContext { ctx }).await;
+                        TryTransition::try_transition(state, TransitionContext { ctx }).await?;
                     return Ok(Self::Done(nstate));
                 }
 
@@ -163,7 +166,9 @@ impl RoundSM {
 
     #[tracing::instrument(skip(self, reaction))]
     pub fn step_remove_react(self, reaction: Reaction) -> Self {
-        let user_id = reaction.user_id.unwrap();
+        let user_id = reaction
+            .user_id
+            .expect("The User-ID should always be set for a Reaction in this Situation");
         let react_data = reaction.emoji.clone();
 
         match self {
@@ -214,12 +219,15 @@ impl RoundSM {
         ctx: &Context,
         message_id: MessageId,
         reply: Message,
-    ) -> Result<Self, Box<dyn Error + Send + Sync>> {
+    ) -> Result<Self, TransitionError> {
         match self {
             Self::RegisterUsers(state) => Ok(Self::RegisterUsers(state)),
             Self::RegisterRoles(state) => Ok(Self::RegisterRoles(state)),
             Self::RoleCounts(mut state) => {
-                state.role_reply(ctx, message_id, reply).await;
+                state
+                    .role_reply(ctx, message_id, reply)
+                    .await
+                    .map_err(|e| TransitionError::new(e))?;
 
                 if state.is_configured() {
                     match TryTransition::try_transition(state, TransitionContext { ctx }).await {

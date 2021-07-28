@@ -53,14 +53,19 @@ impl EventHandler for Handler {
         tracing::info!("Bot is ready");
     }
 
+    #[tracing::instrument(skip(self, ctx, add_reaction))]
     async fn reaction_add(&self, ctx: Context, add_reaction: serenity::model::channel::Reaction) {
-        let user_id = add_reaction.user_id.unwrap();
+        let user_id = add_reaction
+            .user_id
+            .expect("A Reaction should always contain a User-ID");
         if user_id == self.id {
             return;
         }
 
         let data = ctx.data.read().await;
-        let rounds = data.get::<Rounds>().unwrap();
+        let rounds = data
+            .get::<Rounds>()
+            .expect("The shared Rounds-Datastructure should always exist in a running Instance");
         let round_mutex = match rounds.get_from_reaction(&add_reaction) {
             Some(r) => r,
             None => return,
@@ -78,7 +83,9 @@ impl EventHandler for Handler {
                 drop(rounds);
                 drop(data);
                 let mut data = ctx.data.write().await;
-                let rounds = data.get_mut::<Rounds>().unwrap();
+                let rounds = data.get_mut::<Rounds>().expect(
+                    "The shared Rounds-Datastructure should always exist in a running Instance",
+                );
                 rounds.remove_from_reaction(&add_reaction);
 
                 return;
@@ -93,7 +100,9 @@ impl EventHandler for Handler {
         drop(rounds);
         drop(data);
         let mut data = ctx.data.write().await;
-        let rounds = data.get_mut::<Rounds>().unwrap();
+        let rounds = data
+            .get_mut::<Rounds>()
+            .expect("The shared Rounds-Datastructure should always exist in a running Instance");
         rounds.remove_from_reaction(&add_reaction);
     }
 
@@ -102,13 +111,17 @@ impl EventHandler for Handler {
         ctx: Context,
         removed_reaction: serenity::model::channel::Reaction,
     ) {
-        let user_id = removed_reaction.user_id.unwrap();
+        let user_id = removed_reaction
+            .user_id
+            .expect("A Reaction should always contain a User-ID");
         if user_id == self.id {
             return;
         }
 
         let data = ctx.data.read().await;
-        let rounds = data.get::<Rounds>().unwrap();
+        let rounds = data
+            .get::<Rounds>()
+            .expect("The shared Rounds-Datastructure should always exist in a running Instance");
         match rounds.get_from_reaction(&removed_reaction) {
             Some(round_mutex) => {
                 let mut round = round_mutex.lock().await;
@@ -127,7 +140,7 @@ impl EventHandler for Handler {
         let reply_id = ref_message.id;
 
         let data = ctx.data.read().await;
-        let role_count = data.get::<RoleCount>().unwrap();
+        let role_count = data.get::<RoleCount>().expect("The shared Role-Count-Messages Datastructure should always exist in a running Instance");
         let mut role_count = role_count.lock().await;
 
         let round_id = match role_count.remove(&reply_id) {
@@ -135,7 +148,9 @@ impl EventHandler for Handler {
             None => return,
         };
 
-        let rounds = data.get::<Rounds>().unwrap();
+        let rounds = data
+            .get::<Rounds>()
+            .expect("The shared Rounds-Datastructure should always exist in a running Instance");
         match rounds.get(&round_id) {
             Some(round_mutex) => {
                 let mut round = round_mutex.lock().await;
@@ -144,7 +159,7 @@ impl EventHandler for Handler {
 
                     {
                         let mut data = ctx.data.write().await;
-                        let rounds = data.get_mut::<Rounds>().unwrap();
+                        let rounds = data.get_mut::<Rounds>().expect("The shared Rounds-Datastructure should always exist in a running Instance");
                         rounds.remove(&round_id);
                     }
                 }
@@ -181,20 +196,27 @@ struct General;
 
 #[command]
 async fn werewolf(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
-    let guild_id = msg.guild_id.unwrap();
+    let guild_id = match msg.guild_id {
+        Some(gid) => gid,
+        None => return Ok(()),
+    };
     let channel_id = msg.channel_id;
 
     let mut data = ctx.data.write().await;
-    let rounds = data.get_mut::<Rounds>().unwrap();
+    let rounds = data
+        .get_mut::<Rounds>()
+        .expect("The shared Rounds-Datastructure should always exist in a running Instance");
     if rounds.get(&guild_id).is_some() {
         tracing::error!("There is already a Round running on the Guild");
-        channel_id
+        if let Err(e) = channel_id
             .say(
                 &ctx.http,
                 "There exists already a running Round in this Guild",
             )
             .await
-            .unwrap();
+        {
+            tracing::error!("Sending Error-Message {:?}", e);
+        }
 
         return Ok(());
     }

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, error::Error};
+use std::collections::HashMap;
 
 use serenity::{
     client::Context,
@@ -9,6 +9,8 @@ use serenity::{
     },
     prelude::Mutex,
 };
+
+use self::state::TransitionError;
 
 mod sm;
 mod state;
@@ -36,7 +38,7 @@ impl Round {
         ctx: &Context,
         message_id: MessageId,
         reply: Message,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+    ) -> Result<(), TransitionError> {
         match self
             .sm
             .clone()
@@ -56,7 +58,7 @@ impl Round {
         &mut self,
         ctx: &Context,
         reaction: Reaction,
-    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+    ) -> Result<(), TransitionError> {
         match self.sm.clone().step_add_react(ctx, reaction).await {
             Ok(nsm) => {
                 self.sm = nsm;

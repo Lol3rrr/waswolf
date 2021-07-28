@@ -21,33 +21,54 @@ pub async fn stop(
     participants: &[(UserId, WereWolfRole)],
     channels: &BTreeMap<String, ChannelId>,
 ) {
-    let guild_channel = guild.channels(&ctx.http).await.unwrap();
-    let inactive_category_id = channels::setup_inactive_category(ctx, &guild, &guild_channel)
-        .await
-        .unwrap();
+    let guild_channel = match guild.channels(&ctx.http).await {
+        Ok(g) => g,
+        Err(e) => {
+            tracing::error!("Loading Channels for Guild: {:?}", e);
+            return;
+        }
+    };
+    let inactive_category_id =
+        match channels::setup_inactive_category(ctx, &guild, &guild_channel).await {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::error!("Setting up Inactive-Category: {:?}", e);
+                return;
+            }
+        };
 
     // Cleanup all the Role-Channels
     for (_, channel) in channels.iter() {
         // Reset the special Permission-Settings for Players in the current
         // Channel
         for (user, _) in participants.iter() {
-            channel
+            if let Err(e) = channel
                 .delete_permission(&ctx.http, PermissionOverwriteType::Member(user.clone()))
                 .await
-                .unwrap();
+            {
+                tracing::error!("Removing Restrictive-Permission for Player: {:?}", e);
+            }
         }
 
         // Move the Channel back to the Inactive-Category
-        channel
+        if let Err(e) = channel
             .edit(&ctx.http, |c| c.category(inactive_category_id))
             .await
-            .unwrap();
+        {
+            tracing::error!("Moving Channel back into Inactive-Category: {:?}", e);
+        }
     }
 
     // Clean-Up all the Players "settings":
     // * Remove the Dead-Role if applied
     for (t_user, _) in participants.iter() {
-        let mut member = guild.member(&ctx.http, t_user).await.unwrap();
+        let mut member = match guild.member(&ctx.http, t_user).await {
+            Ok(m) => m,
+            Err(e) => {
+                tracing::error!("Loading Guild-Member: {:?}", e);
+                continue;
+            }
+        };
 
         if let Err(e) = member.remove_role(&ctx.http, dead_role_id).await {
             tracing::error!("Removing 'W-Dead' Role: {:?}", e);
