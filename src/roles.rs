@@ -109,6 +109,7 @@ pub fn distribute_roles(
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum WereWolfRole {
+    Werwolf,
     Amor,
     Gerber,
     HarterBursche,
@@ -137,7 +138,6 @@ pub enum WereWolfRole {
     UnruheStifter,
     Verfluchter,
     Zaubermeisterin,
-    Werwolf,
     FreiMaurer,
     Vampire,
     EinsamerWolf,
@@ -147,6 +147,7 @@ pub enum WereWolfRole {
 impl Display for WereWolfRole {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Werwolf => write!(f, "Werwolf"),
             Self::Amor => write!(f, "Amor"),
             Self::Gerber => write!(f, "Gerber"),
             Self::HarterBursche => write!(f, "HarterBursche"),
@@ -175,7 +176,6 @@ impl Display for WereWolfRole {
             Self::UnruheStifter => write!(f, "UnruheStifter"),
             Self::Verfluchter => write!(f, "Verfluchter"),
             Self::Zaubermeisterin => write!(f, "Zaubermeisterin"),
-            Self::Werwolf => write!(f, "Werwolf"),
             Self::FreiMaurer => write!(f, "Freimaurer"),
             Self::Vampire => write!(f, "Vampire"),
             Self::EinsamerWolf => write!(f, "Einsamer Wolf"),
@@ -187,6 +187,7 @@ impl Display for WereWolfRole {
 impl WereWolfRole {
     pub fn all_roles() -> Vec<WereWolfRole> {
         vec![
+            Self::Werwolf,
             Self::Amor,
             Self::Gerber,
             Self::HarterBursche,
@@ -215,7 +216,6 @@ impl WereWolfRole {
             Self::UnruheStifter,
             Self::Verfluchter,
             Self::Zaubermeisterin,
-            Self::Werwolf,
             Self::FreiMaurer,
             Self::Vampire,
             Self::EinsamerWolf,
@@ -239,6 +239,7 @@ impl WereWolfRole {
 
     pub const fn to_emoji(&self) -> char {
         match self {
+            Self::Werwolf => '🐺',
             Self::Amor => '💛',
             Self::Gerber => '🇬',
             Self::HarterBursche => '💪',
@@ -267,7 +268,6 @@ impl WereWolfRole {
             Self::UnruheStifter => '💥',
             Self::Verfluchter => '🧟',
             Self::Zaubermeisterin => '🪄',
-            Self::Werwolf => '🐺',
             Self::FreiMaurer => '🧱',
             Self::Vampire => '🧛',
             Self::EinsamerWolf => '🐻',
@@ -278,6 +278,7 @@ impl WereWolfRole {
     pub fn from_emoji(emoji: ReactionType) -> Option<WereWolfRole> {
         let mut data = emoji.as_data();
         match data.remove(0) {
+            '🐺' => Some(Self::Werwolf),
             '💛' => Some(Self::Amor),
             '🇬' => Some(Self::Gerber),
             '💪' => Some(Self::HarterBursche),
@@ -306,7 +307,6 @@ impl WereWolfRole {
             '💥' => Some(Self::UnruheStifter),
             '🧟' => Some(Self::Verfluchter),
             '🪄' => Some(Self::Zaubermeisterin),
-            '🐺' => Some(Self::Werwolf),
             '🧱' => Some(Self::FreiMaurer),
             '🧛' => Some(Self::Vampire),
             '🐻' => Some(Self::EinsamerWolf),
@@ -317,6 +317,7 @@ impl WereWolfRole {
 
     pub fn channels(&self) -> Vec<String> {
         match self {
+            Self::Werwolf => vec![format!("{}", self)],
             Self::Amor => vec![format!("{}", self)],
             Self::Gerber => vec![format!("{}", self)],
             Self::HarterBursche => vec![format!("{}", self)],
@@ -345,7 +346,6 @@ impl WereWolfRole {
             Self::UnruheStifter => vec![format!("{}", self)],
             Self::Verfluchter => vec![format!("{}", self)],
             Self::Zaubermeisterin => vec![format!("{}", self)],
-            Self::Werwolf => vec![format!("{}", self)],
             Self::FreiMaurer => vec![format!("{}", self)],
             Self::Vampire => vec![format!("{}", self)],
             Self::EinsamerWolf => vec![format!("{}", self), format!("{}", Self::Werwolf)],
