@@ -11,7 +11,10 @@ use serenity::{
 
 use crate::roles::{self, WereWolfRole};
 
-use super::{channels, RoleCounts, RoundState};
+use super::{
+    channels::{self, SetupChannelError},
+    RoleCounts, RoundState,
+};
 
 /// Generates the Permission-Settings to allow the given User to access
 /// whatever this is applied to
@@ -23,11 +26,11 @@ fn channel_access_permissions(user: UserId) -> PermissionOverwrite {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum StartError {
     LoadingChannels,
     SettingUpCategory,
-    SettingUpChannels,
+    SettingUpChannels(SetupChannelError),
     SettingUpModeratorChannel,
     DistributingRoles,
     AssignRolePermissions,
@@ -38,7 +41,7 @@ impl Display for StartError {
         match self {
             Self::LoadingChannels => write!(f, "Loading Guild Channels"),
             Self::SettingUpCategory => write!(f, "Setting up Category for active Roles"),
-            Self::SettingUpChannels => write!(f, "Setting up Channels for active Roles"),
+            Self::SettingUpChannels(_) => write!(f, "Setting up Channels for active Roles"),
             Self::SettingUpModeratorChannel => write!(f, "Setting up Channel for the Moderators"),
             Self::DistributingRoles => write!(f, "Distributing Roles to Players"),
             Self::AssignRolePermissions => {
@@ -53,9 +56,11 @@ impl Error for StartError {}
 /// Configuration
 #[tracing::instrument(skip(source, dead_role_id, ctx))]
 pub async fn start(
+    bot_id: UserId,
     source: &RoundState<RoleCounts>,
     dead_role_name: &str,
     dead_role_id: RoleId,
+    everyone_role: RoleId,
     ctx: &Context,
 ) -> Result<
     (
@@ -65,26 +70,23 @@ pub async fn start(
     ),
     StartError,
 > {
-    let default_permissions: Vec<PermissionOverwrite> = {
-        let mut tmp: Vec<PermissionOverwrite> = source
-            .state
-            .participants
-            .iter()
-            .map(|user| PermissionOverwrite {
-                allow: Permissions { bits: 0 },
-                deny: Permissions::READ_MESSAGES,
-                kind: PermissionOverwriteType::Member(user.clone()),
-            })
-            .collect();
-
-        tmp.push(PermissionOverwrite {
+    let default_permissions: Vec<PermissionOverwrite> = vec![
+        PermissionOverwrite {
+            allow: Permissions::READ_MESSAGES,
+            deny: Permissions { bits: 0 },
+            kind: PermissionOverwriteType::Member(bot_id),
+        },
+        PermissionOverwrite {
+            allow: Permissions { bits: 0 },
+            deny: Permissions::READ_MESSAGES,
+            kind: PermissionOverwriteType::Role(everyone_role),
+        },
+        PermissionOverwrite {
             allow: Permissions::READ_MESSAGES,
             deny: Permissions { bits: 0 },
             kind: PermissionOverwriteType::Role(dead_role_id),
-        });
-
-        tmp
-    };
+        },
+    ];
 
     let guild_channel = source
         .guild
@@ -107,7 +109,7 @@ pub async fn start(
         &source.owner,
     )
     .await
-    .map_err(|_| StartError::SettingUpChannels)?;
+    .map_err(|e| StartError::SettingUpChannels(e))?;
 
     let mod_channel = channels::setup_moderator_channel(
         default_permissions,

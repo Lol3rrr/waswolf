@@ -35,6 +35,7 @@ impl Round {
     #[tracing::instrument(skip(self, ctx, message_id, reply))]
     pub async fn role_reply(
         &mut self,
+        bot_id: UserId,
         ctx: &Context,
         message_id: MessageId,
         reply: Message,
@@ -42,7 +43,7 @@ impl Round {
         match self
             .sm
             .clone()
-            .step_role_reply(ctx, message_id, reply)
+            .step_role_reply(bot_id, ctx, message_id, reply)
             .await
         {
             Ok(n) => {
@@ -56,10 +57,11 @@ impl Round {
     #[tracing::instrument(skip(self, ctx, reaction))]
     pub async fn handle_add_react(
         &mut self,
+        bot_id: UserId,
         ctx: &Context,
         reaction: Reaction,
     ) -> Result<(), TransitionError> {
-        match self.sm.clone().step_add_react(ctx, reaction).await {
+        match self.sm.clone().step_add_react(bot_id, ctx, reaction).await {
             Ok(nsm) => {
                 self.sm = nsm;
                 Ok(())

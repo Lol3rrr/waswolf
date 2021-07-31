@@ -72,7 +72,10 @@ impl EventHandler for Handler {
         };
 
         let mut round = round_mutex.lock().await;
-        match round.handle_add_react(&ctx, add_reaction.clone()).await {
+        match round
+            .handle_add_react(self.id, &ctx, add_reaction.clone())
+            .await
+        {
             Ok(_) => {}
             Err(e) => {
                 tracing::error!("Handling Reaction for Round: {}", e);
@@ -154,7 +157,7 @@ impl EventHandler for Handler {
         match rounds.get(&round_id) {
             Some(round_mutex) => {
                 let mut round = round_mutex.lock().await;
-                if let Err(e) = round.role_reply(&ctx, reply_id, new_message).await {
+                if let Err(e) = round.role_reply(self.id, &ctx, reply_id, new_message).await {
                     tracing::error!("{:?}", e);
 
                     {

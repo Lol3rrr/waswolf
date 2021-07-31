@@ -15,6 +15,7 @@ use super::channels;
 /// This function handles all the Clean-Up when a Round has been finished
 #[tracing::instrument(skip(dead_role_id, ctx, guild, participants, channels))]
 pub async fn stop(
+    everyone_role_id: RoleId,
     dead_role_id: RoleId,
     ctx: &Context,
     guild: GuildId,
@@ -48,6 +49,16 @@ pub async fn stop(
             {
                 tracing::error!("Removing Restrictive-Permission for Player: {:?}", e);
             }
+        }
+
+        if let Err(e) = channel
+            .delete_permission(&ctx.http, PermissionOverwriteType::Role(everyone_role_id))
+            .await
+        {
+            tracing::error!(
+                "Removing Restrictive-Permission for @everyone-Role: {:?}",
+                e
+            );
         }
 
         // Move the Channel back to the Inactive-Category

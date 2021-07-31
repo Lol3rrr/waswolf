@@ -11,10 +11,10 @@ use serenity::{
 
 use crate::roles::WereWolfRole;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum GetChannelError {
     UpdatingPermissions,
-    CreatingChannel,
+    CreatingChannel(serenity::Error),
 }
 
 /// Attempts to get a Channel from a Guild, by either reusing an already
@@ -49,7 +49,7 @@ async fn get_channel(
                         .permissions(default_permissions.to_vec())
                 })
                 .await
-                .map_err(|_| GetChannelError::CreatingChannel)?
+                .map_err(|e| GetChannelError::CreatingChannel(e))?
                 .id
         }
     };
@@ -126,7 +126,7 @@ pub async fn setup_inactive_category(
     .await
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum SetupChannelError {
     GetChannel(GetChannelError),
     MoveChannel,

@@ -85,6 +85,19 @@ impl<S> RoundState<S> {
         };
         Ok(id)
     }
+    /// Loads the ID of the Role for Dead players or creates it if it does not
+    /// currently exist
+    #[tracing::instrument(skip(self, ctx))]
+    async fn everyone_role(&self, ctx: &Context) -> Result<RoleId, serenity::Error> {
+        let g_roles = self.guild.roles(&ctx.http).await?;
+
+        Ok(g_roles
+            .iter()
+            .min_by(|(_, x), (_, y)| x.position.cmp(&y.position))
+            .expect("There is always at least the @everyone Role-Available")
+            .0
+            .clone())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -125,7 +138,9 @@ pub struct Done {}
 
 use async_trait::async_trait;
 
+#[derive(Clone, Copy)]
 pub struct TransitionContext<'a> {
+    pub bot_id: UserId,
     pub ctx: &'a Context,
 }
 
@@ -438,13 +453,26 @@ impl TryTransition<RoundState<RoleCounts>> for RoundState<Ongoing> {
             .await
             .map_err(|e| TransitionError::new(e))?;
 
-        let (participants, mod_channel, role_channel) =
-            match start::start(&source, DEAD_ROLE_NAME, dead_role_id, context.ctx).await {
-                Ok(d) => d,
-                Err(e) => {
-                    return Err(TransitionError::new(e));
-                }
-            };
+        let everyone_role_id = source
+            .everyone_role(context.ctx)
+            .await
+            .map_err(|e| TransitionError::new(e))?;
+
+        let (participants, mod_channel, role_channel) = match start::start(
+            context.bot_id,
+            &source,
+            DEAD_ROLE_NAME,
+            dead_role_id,
+            everyone_role_id,
+            context.ctx,
+        )
+        .await
+        {
+            Ok(d) => d,
+            Err(e) => {
+                return Err(TransitionError::new(e));
+            }
+        };
 
         let msg = format!(
             "Starting Round react with {} to end the Round",
@@ -476,12 +504,18 @@ impl TryTransition<RoundState<Ongoing>> for RoundState<Done> {
         source: RoundState<Ongoing>,
         context: TransitionContext<'a>,
     ) -> Result<Self, TransitionError> {
-        let role_id = source
+        let dead_role_id = source
             .dead_role(context.ctx)
             .await
             .map_err(|e| TransitionError::new(e))?;
+        let everyone_role_id = source
+            .everyone_role(context.ctx)
+            .await
+            .map_err(|e| TransitionError::new(e))?;
+
         stop::stop(
-            role_id,
+            everyone_role_id,
+            dead_role_id,
             context.ctx,
             source.guild,
             &source.state.participants,

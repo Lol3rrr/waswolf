@@ -47,6 +47,7 @@ impl RoundSM {
     #[tracing::instrument(skip(self, ctx, reaction))]
     pub async fn step_add_react(
         self,
+        bot_id: UserId,
         ctx: &Context,
         reaction: Reaction,
     ) -> Result<Self, TransitionError> {
@@ -54,6 +55,8 @@ impl RoundSM {
             .user_id
             .expect("The User-ID should always be set for Reactions in this case");
         let react_data = reaction.emoji;
+
+        let t_ctx = TransitionContext { bot_id, ctx };
 
         match self {
             Self::RegisterUsers(mut state) => {
@@ -78,7 +81,7 @@ impl RoundSM {
 
                     tracing::debug!("Confirmed Round");
                     let nstate: RoundState<RegisterRoles> =
-                        TryTransition::try_transition(state, TransitionContext { ctx }).await?;
+                        TryTransition::try_transition(state, t_ctx).await?;
                     return Ok(Self::RegisterRoles(nstate));
                 }
 
@@ -89,15 +92,13 @@ impl RoundSM {
                     let needs_role_config = state.needs_role_count_config();
 
                     let nstate: RoundState<RoleCounts> =
-                        TryTransition::try_transition(state, TransitionContext { ctx }).await?;
+                        TryTransition::try_transition(state, t_ctx).await?;
 
                     if needs_role_config {
                         return Ok(Self::RoleCounts(nstate));
                     } else {
                         let nstate: RoundState<Ongoing> =
-                            match TryTransition::try_transition(nstate, TransitionContext { ctx })
-                                .await
-                            {
+                            match TryTransition::try_transition(nstate, t_ctx).await {
                                 Ok(n) => n,
                                 Err(e) => {
                                     tracing::error!("Transitioning {:?}", e);
@@ -154,7 +155,7 @@ impl RoundSM {
                     tracing::info!("Stopping/Ending Round");
 
                     let nstate: RoundState<Done> =
-                        TryTransition::try_transition(state, TransitionContext { ctx }).await?;
+                        TryTransition::try_transition(state, t_ctx).await?;
                     return Ok(Self::Done(nstate));
                 }
 
@@ -216,10 +217,13 @@ impl RoundSM {
     #[tracing::instrument(skip(self, ctx, message_id, reply))]
     pub async fn step_role_reply(
         self,
+        bot_id: UserId,
         ctx: &Context,
         message_id: MessageId,
         reply: Message,
     ) -> Result<Self, TransitionError> {
+        let t_ctx = TransitionContext { bot_id, ctx };
+
         match self {
             Self::RegisterUsers(state) => Ok(Self::RegisterUsers(state)),
             Self::RegisterRoles(state) => Ok(Self::RegisterRoles(state)),
@@ -230,7 +234,7 @@ impl RoundSM {
                     .map_err(|e| TransitionError::new(e))?;
 
                 if state.is_configured() {
-                    match TryTransition::try_transition(state, TransitionContext { ctx }).await {
+                    match TryTransition::try_transition(state, t_ctx).await {
                         Ok(n) => Ok(Self::Ongoing(n)),
                         Err(e) => Err(e),
                     }
