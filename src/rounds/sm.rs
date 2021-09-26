@@ -115,10 +115,7 @@ impl RoundSM {
                         return Ok(Self::RegisterRoles(state));
                     }
 
-                    state
-                        .next_page(ctx)
-                        .await
-                        .map_err(|e| TransitionError::new(e))?;
+                    state.next_page(ctx).await.map_err(TransitionError::new)?;
 
                     return Ok(Self::RegisterRoles(state));
                 }
@@ -131,7 +128,7 @@ impl RoundSM {
                     state
                         .previous_page(ctx)
                         .await
-                        .map_err(|e| TransitionError::new(e))?;
+                        .map_err(TransitionError::new)?;
 
                     return Ok(Self::RegisterRoles(state));
                 }
@@ -195,7 +192,7 @@ impl RoundSM {
                     return Self::RegisterRoles(state);
                 }
 
-                let removed_role = match WereWolfRole::from_emoji(reaction.emoji.clone()) {
+                let removed_role = match WereWolfRole::from_emoji(reaction.emoji) {
                     Some(r) => r,
                     None => {
                         tracing::error!("Unknown Reaction was removed");
@@ -231,7 +228,7 @@ impl RoundSM {
                 state
                     .role_reply(ctx, message_id, reply)
                     .await
-                    .map_err(|e| TransitionError::new(e))?;
+                    .map_err(TransitionError::new)?;
 
                 if state.is_configured() {
                     match TryTransition::try_transition(state, t_ctx).await {
@@ -256,16 +253,12 @@ impl RoundSM {
     }
 
     pub async fn clear_channel_permissions(&self, ctx: &Context, user_id: UserId) {
-        match self {
-            Self::Ongoing(state) => state.clear_permissions(ctx, user_id).await,
-            _ => {}
+        if let Self::Ongoing(state) = self {
+            state.clear_permissions(ctx, user_id).await;
         }
     }
 
     pub fn is_done(&self) -> bool {
-        match self {
-            Self::Done(_) => true,
-            _ => false,
-        }
+        matches!(self, Self::Done(_))
     }
 }

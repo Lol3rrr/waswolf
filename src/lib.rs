@@ -14,7 +14,6 @@ use serenity::{
         prelude::Activity,
     },
     prelude::{Mutex, TypeMapKey},
-    utils::Color,
     Client,
 };
 
@@ -24,6 +23,8 @@ use rounds::{Round, RoundsMap};
 
 mod reactions;
 pub use reactions::Reactions;
+
+mod help;
 
 struct Rounds;
 impl TypeMapKey for Rounds {
@@ -55,12 +56,17 @@ impl EventHandler for Handler {
 
     #[tracing::instrument(skip(self, ctx, add_reaction))]
     async fn reaction_add(&self, ctx: Context, add_reaction: serenity::model::channel::Reaction) {
-        let user_id = add_reaction
-            .user_id
-            .expect("A Reaction should always contain a User-ID");
-        if user_id == self.id {
-            return;
-        }
+        // If the Reaction came from the Bot, we will simply ignore it and return early
+        match add_reaction.user_id {
+            Some(id) if id == self.id => {
+                return;
+            }
+            Some(_) => {}
+            None => {
+                tracing::error!("A Reaction should always contain a User-ID");
+                return;
+            }
+        };
 
         let data = ctx.data.read().await;
         let rounds = data
@@ -83,7 +89,6 @@ impl EventHandler for Handler {
                 round.update_msg(&ctx, &error_msg).await;
 
                 drop(round);
-                drop(rounds);
                 drop(data);
                 let mut data = ctx.data.write().await;
                 let rounds = data.get_mut::<Rounds>().expect(
@@ -100,7 +105,6 @@ impl EventHandler for Handler {
         }
 
         drop(round);
-        drop(rounds);
         drop(data);
         let mut data = ctx.data.write().await;
         let rounds = data
@@ -125,14 +129,14 @@ impl EventHandler for Handler {
         let rounds = data
             .get::<Rounds>()
             .expect("The shared Rounds-Datastructure should always exist in a running Instance");
-        match rounds.get_from_reaction(&removed_reaction) {
-            Some(round_mutex) => {
-                let mut round = round_mutex.lock().await;
-                round.handle_remove_react(&ctx, removed_reaction).await;
-                return;
-            }
-            None => {}
+
+        let round_mutex = match rounds.get_from_reaction(&removed_reaction) {
+            Some(r) => r,
+            None => return,
         };
+
+        let mut round = round_mutex.lock().await;
+        round.handle_remove_react(&ctx, removed_reaction).await;
     }
 
     async fn message(&self, ctx: Context, new_message: Message) {
@@ -154,22 +158,24 @@ impl EventHandler for Handler {
         let rounds = data
             .get::<Rounds>()
             .expect("The shared Rounds-Datastructure should always exist in a running Instance");
-        match rounds.get(&round_id) {
-            Some(round_mutex) => {
-                let mut round = round_mutex.lock().await;
-                if let Err(e) = round.role_reply(self.id, &ctx, reply_id, new_message).await {
-                    tracing::error!("{:?}", e);
 
-                    {
-                        let mut data = ctx.data.write().await;
-                        let rounds = data.get_mut::<Rounds>().expect("The shared Rounds-Datastructure should always exist in a running Instance");
-                        rounds.remove(&round_id);
-                    }
-                }
-                return;
-            }
-            None => {}
+        let round_mutex = match rounds.get(&round_id) {
+            Some(r) => r,
+            None => return,
         };
+
+        let mut round = round_mutex.lock().await;
+        if let Err(e) = round.role_reply(self.id, &ctx, reply_id, new_message).await {
+            tracing::error!("{:?}", e);
+
+            {
+                let mut data = ctx.data.write().await;
+                let rounds = data.get_mut::<Rounds>().expect(
+                    "The shared Rounds-Datastructure should always exist in a running Instance",
+                );
+                rounds.remove(&round_id);
+            }
+        }
     }
 
     async fn guild_member_update(
@@ -182,14 +188,12 @@ impl EventHandler for Handler {
         let rounds = data
             .get::<Rounds>()
             .expect("The general Rounds-Map should always exist");
-        match rounds.get(&new.guild_id) {
-            Some(round_mutex) => {
-                let mut round = round_mutex.lock().await;
-                round.handle_member_update(&ctx, new).await;
-                return;
-            }
-            None => {}
-        };
+
+        if let Some(round_mutex) = rounds.get(&new.guild_id) {
+            let mut round = round_mutex.lock().await;
+            round.handle_member_update(&ctx, new).await;
+            return;
+        }
     }
 }
 
@@ -199,6 +203,8 @@ struct General;
 
 #[command]
 async fn werewolf(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
+    tracing::debug!("Received werewolf command");
+
     let guild_id = match msg.guild_id {
         Some(gid) => gid,
         None => return Ok(()),
@@ -261,16 +267,13 @@ async fn werewolf(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
 
 #[command]
 async fn help(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
-    tracing::debug!("Help Command");
+    tracing::debug!("Received help Command");
 
     if let Err(e) = msg
         .channel_id
         .send_message(&ctx.http, |m| {
-            m.embed(|e| {
-                e.title("Commands")
-                    .field("werewolf", "Starts a new Werewolf-Round", false)
-                    .color(Color::from_rgb(130, 10, 10))
-            })
+            help::generate_help_message(m);
+            m
         })
         .await
     {
@@ -280,20 +283,31 @@ async fn help(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
     Ok(())
 }
 
+/// Initialize the Client instance with all the needed Data
+/// to function properly
+async fn init_bot_data(client: &Client) {
+    let mut c_data = client.data.write().await;
+    c_data.insert::<Rounds>(RoundsMap::new());
+    c_data.insert::<RoleCount>(Mutex::new(HashMap::default()));
+}
+
 /// Actually starts the Bot itself
 pub async fn start(token: String) {
     tracing::info!("Starting Bot...");
 
+    // Setup the general Framework for the Discord-Bot instance
     let framework = StandardFramework::new()
         .configure(|c| c.with_whitespace(false).prefix(PREFIX))
         .group(&GENERAL_GROUP);
 
+    // Create the HTTP-Instance for the Bot to use
     let http = Http::new_with_token(&token);
     let bot_id = {
         let user = http.get_current_user().await.unwrap();
         user.id
     };
 
+    // Actually create the Bot instance with all the needed Settings/Configs
     let mut client = Client::builder(token)
         .event_handler(Handler { id: bot_id })
         .framework(framework)
@@ -306,11 +320,7 @@ pub async fn start(token: String) {
         .await
         .unwrap();
 
-    {
-        let mut c_data = client.data.write().await;
-        c_data.insert::<Rounds>(RoundsMap::new());
-        c_data.insert::<RoleCount>(Mutex::new(HashMap::default()));
-    }
+    init_bot_data(&client).await;
 
     if let Err(e) = client.start().await {
         tracing::error!("Listening for Events: {:?}", e);

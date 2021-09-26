@@ -44,7 +44,7 @@ pub async fn stop(
         // Channel
         for (user, _) in participants.iter() {
             if let Err(e) = channel
-                .delete_permission(&ctx.http, PermissionOverwriteType::Member(user.clone()))
+                .delete_permission(&ctx.http, PermissionOverwriteType::Member(*user))
                 .await
             {
                 tracing::error!("Removing Restrictive-Permission for Player: {:?}", e);

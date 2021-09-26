@@ -71,7 +71,7 @@ impl<S> RoundState<S> {
             .find(|(_, role)| role.name.to_lowercase() == DEAD_ROLE_NAME.to_lowercase());
 
         let id = match role_index_result {
-            Some((id, _)) => id.clone(),
+            Some((id, _)) => *id,
             None => {
                 tracing::debug!("Creating Role for Dead-Players: {:?}", DEAD_ROLE_NAME);
 
@@ -91,12 +91,11 @@ impl<S> RoundState<S> {
     async fn everyone_role(&self, ctx: &Context) -> Result<RoleId, serenity::Error> {
         let g_roles = self.guild.roles(&ctx.http).await?;
 
-        Ok(g_roles
+        Ok(*g_roles
             .iter()
             .min_by(|(_, x), (_, y)| x.position.cmp(&y.position))
             .expect("There is always at least the @everyone Role-Available")
-            .0
-            .clone())
+            .0)
     }
 }
 
@@ -210,14 +209,14 @@ impl RoundState<RegisterUsers> {
             .enumerate()
             .find(|(_, u)| **u == user);
 
-        match index_result {
-            Some((index, _)) => {
-                self.state.participants.remove(index);
-
-                tracing::debug!("Removed User({:?}) from Round", user);
-            }
-            None => {}
+        let index = match index_result {
+            Some((i, _)) => i,
+            None => return,
         };
+
+        self.state.participants.remove(index);
+
+        tracing::debug!("Removed User({:?}) from Round", user);
     }
 
     pub fn add_moderator(&mut self, moderator: UserId) {
@@ -230,11 +229,7 @@ impl RoundState<RegisterUsers> {
 
 impl RoundState<RegisterRoles> {
     pub fn needs_role_count_config(&self) -> bool {
-        self.state
-            .roles
-            .iter()
-            .find(|r| r.needs_multiple())
-            .is_some()
+        self.state.roles.iter().any(|r| r.needs_multiple())
     }
 
     async fn update_page(&mut self, ctx: &Context) -> Result<(), serenity::Error> {
@@ -265,14 +260,14 @@ impl RoundState<RegisterRoles> {
             .enumerate()
             .find(|(_, r)| **r == role);
 
-        match index_result {
-            Some((index, _)) => {
-                self.state.roles.remove(index);
-
-                tracing::debug!("Removed Role({:?}) from Round", role);
-            }
-            None => {}
+        let index = match index_result {
+            Some((index, _)) => index,
+            None => return,
         };
+
+        self.state.roles.remove(index);
+
+        tracing::debug!("Removed Role({:?}) from Round", role);
     }
 }
 
@@ -319,7 +314,7 @@ impl RoundState<RoleCounts> {
     }
 
     pub fn is_configured(&self) -> bool {
-        self.state.role_messages.len() == 0
+        self.state.role_messages.is_empty()
     }
 }
 
@@ -332,7 +327,7 @@ impl RoundState<Ongoing> {
             }
         };
 
-        user.roles.iter().find(|r_id| **r_id == dead_role).is_some()
+        user.roles.iter().any(|r_id| *r_id == dead_role)
     }
 
     #[tracing::instrument(skip(self, ctx, user))]
@@ -367,7 +362,7 @@ impl TryTransition<RoundState<RegisterUsers>> for RoundState<RegisterRoles> {
         let cfg_message = source
             .update_msg(context.ctx, &roles_msg, &[])
             .await
-            .map_err(|e| TransitionError::new(e))?;
+            .map_err(TransitionError::new)?;
 
         let page = 0;
         roles::cfg_role_msg_reactions(&cfg_message, context.ctx, &w_roles, page).await;
@@ -408,7 +403,7 @@ impl TryTransition<RoundState<RegisterRoles>> for RoundState<RoleCounts> {
                 .channel
                 .say(&context.ctx.http, role_msg)
                 .await
-                .map_err(|e| TransitionError::new(e))?;
+                .map_err(TransitionError::new)?;
 
             role_messages.insert(role_q_msg.id, role.clone());
             role_counts.insert(role_q_msg.id, source.guild);
@@ -417,7 +412,7 @@ impl TryTransition<RoundState<RegisterRoles>> for RoundState<RoleCounts> {
         source
             .update_msg(context.ctx, "Configuring Roles..", &[])
             .await
-            .map_err(|e| TransitionError::new(e))?;
+            .map_err(TransitionError::new)?;
 
         let role_map = {
             let mut tmp = BTreeMap::new();
@@ -451,12 +446,12 @@ impl TryTransition<RoundState<RoleCounts>> for RoundState<Ongoing> {
         let dead_role_id = source
             .dead_role(context.ctx)
             .await
-            .map_err(|e| TransitionError::new(e))?;
+            .map_err(TransitionError::new)?;
 
         let everyone_role_id = source
             .everyone_role(context.ctx)
             .await
-            .map_err(|e| TransitionError::new(e))?;
+            .map_err(TransitionError::new)?;
 
         let (participants, mod_channel, role_channel) = match start::start(
             context.bot_id,
@@ -481,7 +476,7 @@ impl TryTransition<RoundState<RoleCounts>> for RoundState<Ongoing> {
         source
             .update_msg(context.ctx, &msg, &[Reactions::Stop])
             .await
-            .map_err(|e| TransitionError::new(e))?;
+            .map_err(TransitionError::new)?;
 
         Ok(RoundState {
             owner: source.owner,
@@ -507,11 +502,11 @@ impl TryTransition<RoundState<Ongoing>> for RoundState<Done> {
         let dead_role_id = source
             .dead_role(context.ctx)
             .await
-            .map_err(|e| TransitionError::new(e))?;
+            .map_err(TransitionError::new)?;
         let everyone_role_id = source
             .everyone_role(context.ctx)
             .await
-            .map_err(|e| TransitionError::new(e))?;
+            .map_err(TransitionError::new)?;
 
         stop::stop(
             everyone_role_id,
@@ -526,7 +521,7 @@ impl TryTransition<RoundState<Ongoing>> for RoundState<Done> {
         source
             .update_msg(context.ctx, "The Round has completed", &[])
             .await
-            .map_err(|e| TransitionError::new(e))?;
+            .map_err(TransitionError::new)?;
 
         Ok(RoundState {
             owner: source.owner,

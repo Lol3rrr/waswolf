@@ -2,6 +2,7 @@ use std::fmt::Display;
 
 use serenity::model::channel::ReactionType;
 
+/// The Reactions used by the Bot
 #[derive(Debug, PartialEq, Clone)]
 pub enum Reactions {
     Entry,
@@ -22,7 +23,7 @@ impl Reactions {
             Self::Stop => "🛑",
             Self::NextPage => "👉",
             Self::PreviousPage => "👈",
-            Self::Custom(val) => &val,
+            Self::Custom(val) => val,
         }
     }
 }
@@ -33,14 +34,14 @@ impl Display for Reactions {
     }
 }
 
-impl Into<ReactionType> for Reactions {
-    fn into(self) -> ReactionType {
-        ReactionType::Unicode(self.to_str().to_owned())
+impl From<Reactions> for ReactionType {
+    fn from(other: Reactions) -> Self {
+        ReactionType::Unicode(other.to_str().to_owned())
     }
 }
-impl Into<ReactionType> for &Reactions {
-    fn into(self) -> ReactionType {
-        ReactionType::Unicode(self.to_str().to_owned())
+impl From<&Reactions> for ReactionType {
+    fn from(other: &Reactions) -> Self {
+        ReactionType::Unicode(other.to_str().to_owned())
     }
 }
 

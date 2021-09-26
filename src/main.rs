@@ -6,7 +6,8 @@ fn main() {
     let token = env::var("BOT_TOKEN").expect("Needs a Discord-Bot-Token to operate");
 
     // Setting up the logging/tracing stuff
-    let tracing_directive_str = env::var("RUST_LOG").unwrap_or("werewolf_bot=info".to_owned());
+    let tracing_directive_str =
+        env::var("RUST_LOG").unwrap_or_else(|_| "werewolf_bot=info".to_owned());
     let tracing_sub = tracing_subscriber::FmtSubscriber::builder()
         .with_level(true)
         .with_env_filter(

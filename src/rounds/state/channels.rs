@@ -39,7 +39,7 @@ async fn get_channel(
                     .map_err(|_| GetChannelError::UpdatingPermissions)?;
             }
 
-            id.clone()
+            *id
         }
         None => {
             guild_id
@@ -49,7 +49,7 @@ async fn get_channel(
                         .permissions(default_permissions.to_vec())
                 })
                 .await
-                .map_err(|e| GetChannelError::CreatingChannel(e))?
+                .map_err(GetChannelError::CreatingChannel)?
                 .id
         }
     };
@@ -84,7 +84,7 @@ async fn get_category(
         });
 
     let id = match guild_channel_id_result {
-        Some((id, _)) => id.clone(),
+        Some((id, _)) => *id,
         None => {
             let category = guild
                 .create_channel(&ctx.http, |c| c.name(name).kind(ChannelType::Category))
@@ -157,7 +157,7 @@ pub async fn setup_role_channels(
             &channel_name,
             ctx,
             &guild,
-            &guild_channel,
+            guild_channel,
             &default_permissions,
         )
         .await?;
@@ -170,7 +170,7 @@ pub async fn setup_role_channels(
         // Give the Moderator access to the Channel
         for moderator in moderators.iter() {
             channel_id
-                .create_permission(&ctx.http, &channel_access_permissions(moderator.clone()))
+                .create_permission(&ctx.http, &channel_access_permissions(*moderator))
                 .await
                 .map_err(|_| SetupChannelError::UpdatingChannelPermissions)?;
         }
@@ -206,7 +206,7 @@ pub async fn setup_moderator_channel(
         .map_err(|_| SetupChannelError::MoveChannel)?;
 
     for moderator in moderators.iter() {
-        let access_permissions = channel_access_permissions(moderator.clone());
+        let access_permissions = channel_access_permissions(*moderator);
         channel_id
             .create_permission(&ctx.http, &access_permissions)
             .await

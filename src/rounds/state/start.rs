@@ -109,7 +109,7 @@ pub async fn start(
         &source.owner,
     )
     .await
-    .map_err(|e| StartError::SettingUpChannels(e))?;
+    .map_err(StartError::SettingUpChannels)?;
 
     let mod_channel = channels::setup_moderator_channel(
         default_permissions,
@@ -130,7 +130,7 @@ pub async fn start(
 
     // Set the Permissions for the Users and their corresponding Role-Channels
     for (user_id, role) in participants.iter() {
-        let access_permissions = channel_access_permissions(user_id.clone());
+        let access_permissions = channel_access_permissions(*user_id);
 
         for tmp_c in role.channels() {
             let channel = role_channel

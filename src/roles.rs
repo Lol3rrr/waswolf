@@ -224,17 +224,11 @@ impl WereWolfRole {
     }
 
     pub fn needs_multiple(&self) -> bool {
-        match self {
-            Self::Werwolf | Self::FreiMaurer | Self::Vampire => true,
-            _ => false,
-        }
+        matches!(self, Self::Werwolf | Self::FreiMaurer | Self::Vampire)
     }
 
     pub fn needs_other_role(&self) -> bool {
-        match self {
-            Self::Trunkenbold(None) => true,
-            _ => false,
-        }
+        matches!(self, Self::Trunkenbold(None))
     }
 
     pub const fn to_emoji(&self) -> char {
