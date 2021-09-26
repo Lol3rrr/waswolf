@@ -14,14 +14,17 @@ use super::channels;
 
 /// This function handles all the Clean-Up when a Round has been finished
 #[tracing::instrument(skip(dead_role_id, ctx, guild, participants, channels))]
-pub async fn stop(
+pub async fn stop<'pi, PI, PIT>(
     everyone_role_id: RoleId,
     dead_role_id: RoleId,
     ctx: &Context,
     guild: GuildId,
-    participants: &[(UserId, WereWolfRole)],
+    participants: PIT,
     channels: &BTreeMap<String, ChannelId>,
-) {
+) where
+    PI: Iterator<Item = (&'pi UserId, &'pi WereWolfRole)>,
+    PIT: Fn() -> PI,
+{
     let guild_channel = match guild.channels(&ctx.http).await {
         Ok(g) => g,
         Err(e) => {
@@ -42,7 +45,7 @@ pub async fn stop(
     for (_, channel) in channels.iter() {
         // Reset the special Permission-Settings for Players in the current
         // Channel
-        for (user, _) in participants.iter() {
+        for (user, _) in participants() {
             if let Err(e) = channel
                 .delete_permission(&ctx.http, PermissionOverwriteType::Member(*user))
                 .await
@@ -72,7 +75,7 @@ pub async fn stop(
 
     // Clean-Up all the Players "settings":
     // * Remove the Dead-Role if applied
-    for (t_user, _) in participants.iter() {
+    for (t_user, _) in participants() {
         let mut member = match guild.member(&ctx.http, t_user).await {
             Ok(m) => m,
             Err(e) => {

@@ -126,7 +126,7 @@ pub struct RoleCounts {
 #[derive(Debug, Clone)]
 pub struct Ongoing {
     /// All the Participants for the Round as well as all their Roles
-    participants: Vec<(UserId, WereWolfRole)>,
+    participants: BTreeMap<UserId, WereWolfRole>,
     /// The ChannelID of the Moderator Channel
     moderator_channel: ChannelId,
     /// The Channels for all the Roles in the current Game
@@ -513,7 +513,7 @@ impl TryTransition<RoundState<Ongoing>> for RoundState<Done> {
             dead_role_id,
             context.ctx,
             source.guild,
-            &source.state.participants,
+            || source.state.participants.iter(),
             &source.state.channels,
         )
         .await;

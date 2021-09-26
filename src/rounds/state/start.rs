@@ -64,7 +64,7 @@ pub async fn start(
     ctx: &Context,
 ) -> Result<
     (
-        Vec<(UserId, WereWolfRole)>,
+        BTreeMap<UserId, WereWolfRole>,
         ChannelId,
         BTreeMap<String, ChannelId>,
     ),

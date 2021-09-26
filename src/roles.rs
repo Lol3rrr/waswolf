@@ -1,32 +1,17 @@
-use std::{collections::BTreeMap, fmt::Display};
+use std::fmt::Display;
 
-use rand::Rng;
 use serenity::{
     client::Context,
-    model::{
-        channel::{Message, ReactionType},
-        id::UserId,
-    },
+    model::channel::{Message, ReactionType},
 };
-
-use crate::Reactions;
 
 mod cfg_reactions;
 
-pub fn get_roles_msg(roles: &[WereWolfRole]) -> String {
-    let mut msg = "Select all Roles to use:\n".to_string();
-    for role in roles {
-        let emoji = role.to_emoji();
+mod roles_msg;
+pub use roles_msg::get_roles_msg;
 
-        msg.push_str(&format!("{}: {}\n", emoji, role));
-    }
-    msg.push_str(&format!(
-        "Use {} and {} to navigate between the Pages",
-        Reactions::PreviousPage,
-        Reactions::NextPage,
-    ));
-    msg
-}
+mod distribute;
+pub use distribute::distribute_roles;
 
 pub async fn cfg_role_msg_reactions(
     message: &Message,
@@ -40,71 +25,6 @@ pub async fn cfg_role_msg_reactions(
             tracing::error!("Adding Reaction: {:?}", e);
         }
     }
-}
-
-fn populate_nested_roles(mut roles: Vec<WereWolfRole>) -> Vec<WereWolfRole> {
-    loop {
-        let index_result = roles
-            .iter()
-            .enumerate()
-            .find(|(_, tmp_r)| tmp_r.needs_other_role());
-
-        let index = match index_result {
-            Some((i, _)) => i,
-            None => break,
-        };
-
-        let tmp_role = roles.remove(index);
-
-        let other_role_index: usize = rand::thread_rng().gen::<usize>() % roles.len();
-        let other_role = roles.remove(other_role_index);
-
-        let new_role = match tmp_role {
-            WereWolfRole::Trunkenbold(_) => WereWolfRole::Trunkenbold(Some(Box::new(other_role))),
-            _ => panic!("Unexpected Nested-Role"),
-        };
-
-        roles.push(new_role);
-    }
-
-    roles
-}
-
-pub fn distribute_roles(
-    participants: Vec<UserId>,
-    roles: BTreeMap<WereWolfRole, usize>,
-) -> Result<Vec<(UserId, WereWolfRole)>, ()> {
-    // Turn the Map of Roles into a list of all Roles
-    let roles = {
-        let mut tmp = Vec::new();
-        for (role, count) in roles {
-            for _ in 0..count {
-                tmp.push(role.clone());
-            }
-        }
-        tmp
-    };
-
-    // Update the Role-List to accomodate Roles that will turn into another one
-    // while playing
-    let mut roles = populate_nested_roles(roles);
-
-    if roles.len() != participants.len() {
-        tracing::error!("Mismatched User-Role Count");
-        return Err(());
-    }
-
-    let mut result = Vec::new();
-
-    let mut rng = rand::thread_rng();
-    for user in participants {
-        let role_index = rng.gen::<usize>() % roles.len();
-        let role = roles.remove(role_index);
-
-        result.push((user, role));
-    }
-
-    Ok(result)
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
