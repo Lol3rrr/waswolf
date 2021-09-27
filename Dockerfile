@@ -1,4 +1,4 @@
-FROM rust:1.53 as builder
+FROM rust:1.55 as builder
 
 RUN USER=root cargo new --bin werewolf-bot
 WORKDIR ./werewolf-bot
