@@ -4,6 +4,7 @@ use super::WereWolfRole;
 
 const MAX_REACTIONS: usize = 17;
 
+/// Checks if the given Page is the last Page for the Role selection
 fn is_last_page(role_count: usize, page: usize) -> bool {
     if role_count == 0 {
         return true;
@@ -11,13 +12,17 @@ fn is_last_page(role_count: usize, page: usize) -> bool {
     page >= (role_count - 1) / MAX_REACTIONS
 }
 
+/// Generates the list of reactions for the given List of Roles and the correct Page
 pub fn reactions(roles: &[WereWolfRole], page: usize) -> Vec<Reactions> {
     let mut result = Vec::new();
 
+    // If it is not the first Page, we first add the PreviousPage Reaction as all
+    // pages need a "back" button
     if page > 0 {
         result.push(Reactions::PreviousPage);
     }
 
+    // Add the correct Reactions for all the Roles
     for raw_index in 0..MAX_REACTIONS {
         let index = raw_index + page * MAX_REACTIONS;
 
@@ -28,6 +33,7 @@ pub fn reactions(roles: &[WereWolfRole], page: usize) -> Vec<Reactions> {
         result.push(Reactions::Custom(role.to_emoji().to_string()));
     }
 
+    // If it is not the last page, we need to add a button to navigate to the next page
     if !is_last_page(roles.len(), page) {
         result.push(Reactions::NextPage);
     }

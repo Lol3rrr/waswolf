@@ -13,7 +13,7 @@ use serenity::{
         id::{GuildId, MessageId, UserId},
         prelude::Activity,
     },
-    prelude::{Mutex, TypeMapKey},
+    prelude::{Mutex, TypeMap, TypeMapKey},
     Client,
 };
 
@@ -36,10 +36,18 @@ impl TypeMapKey for RoleCount {
     type Value = Mutex<HashMap<MessageId, GuildId>>;
 }
 
+/// The general Handler for the Bot
 struct Handler {
+    /// The UserID of the Bot itself
     id: UserId,
 }
 
+fn get_rounds(map: &TypeMap) -> &RoundsMap {
+    map.get::<Rounds>()
+        .expect("The shared Rounds Datastructure should always exist on a running Bot-Instance")
+}
+
+/// The Bot-Prefix used for recognizing Commands
 const PREFIX: &str = "/";
 
 #[async_trait]
@@ -68,38 +76,36 @@ impl EventHandler for Handler {
             }
         };
 
+        // Get access to the Round itself for the current Guild
         let data = ctx.data.read().await;
-        let rounds = data
-            .get::<Rounds>()
-            .expect("The shared Rounds-Datastructure should always exist in a running Instance");
+        let rounds = get_rounds(&data);
         let round_mutex = match rounds.get_from_reaction(&add_reaction) {
             Some(r) => r,
             None => return,
         };
 
         let mut round = round_mutex.lock().await;
-        match round
+        if let Err(e) = round
             .handle_add_react(self.id, &ctx, add_reaction.clone())
             .await
         {
-            Ok(_) => {}
-            Err(e) => {
-                tracing::error!("Handling Reaction for Round: {}", e);
-                let error_msg = format!("Error handling Round: {}", e);
-                round.update_msg(&ctx, &error_msg).await;
+            tracing::error!("Handling Reaction for Round: {}", e);
+            let error_msg = format!("Error handling Round: {}", e);
+            round.update_msg(&ctx, &error_msg).await;
 
-                drop(round);
-                drop(data);
-                let mut data = ctx.data.write().await;
-                let rounds = data.get_mut::<Rounds>().expect(
-                    "The shared Rounds-Datastructure should always exist in a running Instance",
-                );
-                rounds.remove_from_reaction(&add_reaction);
+            drop(round);
+            drop(data);
+            let mut data = ctx.data.write().await;
+            let rounds = data.get_mut::<Rounds>().expect(
+                "The shared Rounds-Datastructure should always exist in a running Instance",
+            );
+            rounds.remove_from_reaction(&add_reaction);
 
-                return;
-            }
-        };
+            return;
+        }
 
+        // If the Round is already marked as being done we should simply return early as there is
+        // nothing more for us to do
         if !round.is_done() {
             return;
         }
@@ -118,17 +124,21 @@ impl EventHandler for Handler {
         ctx: Context,
         removed_reaction: serenity::model::channel::Reaction,
     ) {
-        let user_id = removed_reaction
-            .user_id
-            .expect("A Reaction should always contain a User-ID");
-        if user_id == self.id {
-            return;
-        }
+        // Check the User-ID of the Reaction and return early if there is none or if the Reaction
+        // came from the bot itself
+        match removed_reaction.user_id {
+            Some(id) if id == self.id => {
+                return;
+            }
+            Some(_) => {}
+            None => {
+                tracing::error!("A removed Reaction should always contain a UserID");
+                return;
+            }
+        };
 
         let data = ctx.data.read().await;
-        let rounds = data
-            .get::<Rounds>()
-            .expect("The shared Rounds-Datastructure should always exist in a running Instance");
+        let rounds = get_rounds(&data);
 
         let round_mutex = match rounds.get_from_reaction(&removed_reaction) {
             Some(r) => r,
@@ -155,9 +165,7 @@ impl EventHandler for Handler {
             None => return,
         };
 
-        let rounds = data
-            .get::<Rounds>()
-            .expect("The shared Rounds-Datastructure should always exist in a running Instance");
+        let rounds = get_rounds(&data);
 
         let round_mutex = match rounds.get(&round_id) {
             Some(r) => r,
@@ -185,9 +193,7 @@ impl EventHandler for Handler {
         new: serenity::model::guild::Member,
     ) {
         let data = ctx.data.read().await;
-        let rounds = data
-            .get::<Rounds>()
-            .expect("The general Rounds-Map should always exist");
+        let rounds = get_rounds(&data);
 
         if let Some(round_mutex) = rounds.get(&new.guild_id) {
             let mut round = round_mutex.lock().await;
@@ -320,8 +326,10 @@ pub async fn start(token: String) {
         .await
         .unwrap();
 
+    // Initialize the Bots inner State
     init_bot_data(&client).await;
 
+    // Actually run the Bot
     if let Err(e) = client.start().await {
         tracing::error!("Listening for Events: {:?}", e);
     }
