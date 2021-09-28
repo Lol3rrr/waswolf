@@ -24,14 +24,14 @@ pub struct Round {
 
 impl Round {
     /// Creates a new Empty Round with the given Owner
-    pub fn new(
+    pub async fn new(
         owner: UserId,
         message_id: MessageId,
         channel: ChannelId,
         guild_id: GuildId,
     ) -> Self {
         Self {
-            sm: sm::RoundSM::new(owner, message_id, channel, guild_id),
+            sm: sm::RoundSM::new(owner, message_id, channel, guild_id).await,
         }
     }
 

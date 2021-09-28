@@ -45,6 +45,32 @@ pub struct RoundState<S> {
 const DEAD_ROLE_NAME: &str = "W-Dead";
 
 impl<S> RoundState<S> {
+    async fn new_raw(
+        owners: BTreeSet<UserId>,
+        message: MessageId,
+        channel: ChannelId,
+        guild: GuildId,
+        state: S,
+    ) -> Self {
+        Self {
+            owner: owners,
+            message,
+            channel,
+            guild,
+            state,
+        }
+    }
+
+    pub fn transition<T>(self, n_state: T) -> RoundState<T> {
+        RoundState {
+            owner: self.owner,
+            message: self.message,
+            channel: self.channel,
+            guild: self.guild,
+            state: n_state,
+        }
+    }
+
     async fn get_msg(&self, ctx: &dyn BotContext) -> Result<Message, serenity::Error> {
         self.channel.message(ctx.get_http(), self.message).await
     }
@@ -114,21 +140,23 @@ impl<S> RoundState<S> {
 use async_trait::async_trait;
 
 impl RoundState<RegisterUsers> {
-    pub fn new(owner: UserId, message: MessageId, channel: ChannelId, guild: GuildId) -> Self {
+    pub async fn new(
+        owner: UserId,
+        message: MessageId,
+        channel: ChannelId,
+        guild: GuildId,
+    ) -> Self {
         let mods = {
             let mut tmp = BTreeSet::new();
             tmp.insert(owner);
             tmp
         };
-        RoundState {
-            owner: mods,
-            message,
-            channel,
-            guild,
-            state: RegisterUsers {
-                participants: Vec::new(),
-            },
-        }
+
+        let state = RegisterUsers {
+            participants: Vec::new(),
+        };
+
+        Self::new_raw(mods, message, channel, guild, state).await
     }
 
     pub fn add_participant(&mut self, user: UserId) {
@@ -300,17 +328,12 @@ impl TryTransition<RoundState<RegisterUsers>> for RoundState<RegisterRoles> {
         let page = 0;
         roles::cfg_role_msg_reactions(&cfg_message, context.ctx, &w_roles, page).await;
 
-        Ok(RoundState {
-            owner: source.owner,
-            message: source.message,
-            channel: source.channel,
-            guild: source.guild,
-            state: RegisterRoles {
-                participants: source.state.participants,
-                roles: Vec::new(),
-                role_page: page,
-            },
-        })
+        let nstate = RegisterRoles {
+            participants: source.state.participants.clone(),
+            roles: Vec::new(),
+            role_page: page,
+        };
+        Ok(source.transition(nstate))
     }
 }
 
@@ -356,17 +379,12 @@ impl TryTransition<RoundState<RegisterRoles>> for RoundState<RoleCounts> {
             tmp
         };
 
-        Ok(RoundState {
-            owner: source.owner,
-            message: source.message,
-            channel: source.channel,
-            guild: source.guild,
-            state: RoleCounts {
-                participants: source.state.participants,
-                roles: role_map,
-                role_messages,
-            },
-        })
+        let nstate = RoleCounts {
+            participants: source.state.participants.clone(),
+            roles: role_map,
+            role_messages,
+        };
+        Ok(source.transition(nstate))
     }
 }
 
@@ -412,17 +430,12 @@ impl TryTransition<RoundState<RoleCounts>> for RoundState<Ongoing> {
             .await
             .map_err(TransitionError::new)?;
 
-        Ok(RoundState {
-            owner: source.owner,
-            message: source.message,
-            channel: source.channel,
-            guild: source.guild,
-            state: Ongoing {
-                participants,
-                moderator_channel: mod_channel,
-                channels: role_channel,
-            },
-        })
+        let nstate = Ongoing {
+            participants,
+            moderator_channel: mod_channel,
+            channels: role_channel,
+        };
+        Ok(source.transition(nstate))
     }
 }
 
@@ -457,12 +470,7 @@ impl TryTransition<RoundState<Ongoing>> for RoundState<Done> {
             .await
             .map_err(TransitionError::new)?;
 
-        Ok(RoundState {
-            owner: source.owner,
-            message: source.message,
-            channel: source.channel,
-            guild: source.guild,
-            state: Done {},
-        })
+        let nstate = Done {};
+        Ok(source.transition(nstate))
     }
 }

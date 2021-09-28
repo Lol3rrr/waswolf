@@ -260,12 +260,7 @@ async fn werewolf(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
 
     rounds.insert(
         guild_id,
-        Mutex::new(Round::new(
-            msg.author.id,
-            msg_id,
-            result.channel_id,
-            guild_id,
-        )),
+        Mutex::new(Round::new(msg.author.id, msg_id, result.channel_id, guild_id).await),
     );
 
     Ok(())

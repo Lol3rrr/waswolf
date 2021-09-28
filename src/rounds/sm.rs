@@ -25,13 +25,13 @@ pub enum RoundSM {
 
 impl RoundSM {
     /// Creates a new Empty Round with the given Owner
-    pub fn new(
+    pub async fn new(
         owner: UserId,
         message_id: MessageId,
         channel: ChannelId,
         guild_id: GuildId,
     ) -> Self {
-        Self::RegisterUsers(RoundState::new(owner, message_id, channel, guild_id))
+        Self::RegisterUsers(RoundState::new(owner, message_id, channel, guild_id).await)
     }
 
     pub async fn update_msg(&self, ctx: &Context, msg: &str) -> Result<Message, serenity::Error> {
