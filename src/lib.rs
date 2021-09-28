@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use async_trait::async_trait;
 use serenity::{
@@ -258,9 +258,14 @@ async fn werewolf(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
     };
     let msg_id = result.id;
 
+    // TODO
+    // Get all the Users that are assigned to the Moderator/Game-Master Role
+    let mut mods = BTreeSet::new();
+    mods.insert(msg.author.id);
+
     rounds.insert(
         guild_id,
-        Mutex::new(Round::new(msg.author.id, msg_id, result.channel_id, guild_id).await),
+        Mutex::new(Round::new(mods, msg_id, result.channel_id, guild_id).await),
     );
 
     Ok(())

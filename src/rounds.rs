@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use serenity::{
     client::Context,
@@ -25,13 +25,13 @@ pub struct Round {
 impl Round {
     /// Creates a new Empty Round with the given Owner
     pub async fn new(
-        owner: UserId,
+        mods: BTreeSet<UserId>,
         message_id: MessageId,
         channel: ChannelId,
         guild_id: GuildId,
     ) -> Self {
         Self {
-            sm: sm::RoundSM::new(owner, message_id, channel, guild_id).await,
+            sm: sm::RoundSM::new(mods, message_id, channel, guild_id).await,
         }
     }
 

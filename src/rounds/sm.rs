@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use serenity::{
     client::Context,
     model::{
@@ -36,12 +38,12 @@ pub enum RoundSM {
 impl RoundSM {
     /// Creates a new Empty Round with the given Owner
     pub async fn new(
-        owner: UserId,
+        mods: BTreeSet<UserId>,
         message_id: MessageId,
         channel: ChannelId,
         guild_id: GuildId,
     ) -> Self {
-        Self::RegisterUsers(RoundState::new(owner, message_id, channel, guild_id).await)
+        Self::RegisterUsers(RoundState::new(mods, message_id, channel, guild_id).await)
     }
 
     pub async fn update_msg(&self, ctx: &Context, msg: &str) -> Result<Message, serenity::Error> {
