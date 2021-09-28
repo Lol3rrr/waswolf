@@ -1,15 +1,15 @@
 use std::{collections::BTreeMap, error::Error, fmt::Display};
 
-use serenity::{
-    client::Context,
-    model::{
-        channel::{PermissionOverwrite, PermissionOverwriteType},
-        id::{ChannelId, RoleId, UserId},
-        Permissions,
-    },
+use serenity::model::{
+    channel::{PermissionOverwrite, PermissionOverwriteType},
+    id::{ChannelId, RoleId, UserId},
+    Permissions,
 };
 
-use crate::roles::{self, WereWolfRole};
+use crate::{
+    roles::{self, WereWolfRole},
+    rounds::BotContext,
+};
 
 use super::{
     channels::{self, SetupChannelError},
@@ -61,7 +61,7 @@ pub async fn start(
     dead_role_name: &str,
     dead_role_id: RoleId,
     everyone_role: RoleId,
-    ctx: &Context,
+    ctx: &dyn BotContext,
 ) -> Result<
     (
         BTreeMap<UserId, WereWolfRole>,
@@ -90,7 +90,7 @@ pub async fn start(
 
     let guild_channel = source
         .guild
-        .channels(&ctx.http)
+        .channels(ctx.get_http())
         .await
         .map_err(|_| StartError::LoadingChannels)?;
 
@@ -138,7 +138,7 @@ pub async fn start(
                 .expect("There should be a Channel for the Role available");
 
             channel
-                .create_permission(&ctx.http, &access_permissions)
+                .create_permission(ctx.get_http(), &access_permissions)
                 .await
                 .map_err(|_| StartError::AssignRolePermissions)?;
         }
@@ -157,7 +157,7 @@ and reorganize the relevant Channels to prepare for the next Round.
             ```", dead_role_name
         );
         mod_channel
-            .say(&ctx.http, info_msg)
+            .say(ctx.get_http(), info_msg)
             .await
             .map_err(|_| StartError::SettingUpModeratorChannel)?;
 
@@ -166,7 +166,7 @@ and reorganize the relevant Channels to prepare for the next Round.
 
             for (user_id, role) in participants.iter() {
                 let user = user_id
-                    .to_user(&ctx.http)
+                    .to_user(ctx.get_http())
                     .await
                     .map_err(|_| StartError::SettingUpModeratorChannel)?;
                 let name = user.name;
@@ -177,7 +177,7 @@ and reorganize the relevant Channels to prepare for the next Round.
             tmp
         };
         mod_channel
-            .say(&ctx.http, msg)
+            .say(ctx.get_http(), msg)
             .await
             .map_err(|_| StartError::SettingUpModeratorChannel)?;
     }

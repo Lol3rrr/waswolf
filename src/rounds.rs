@@ -15,6 +15,8 @@ use self::state::TransitionError;
 mod sm;
 mod state;
 
+pub use state::BotContext;
+
 /// A Single Round of Werewolf
 pub struct Round {
     sm: sm::RoundSM,

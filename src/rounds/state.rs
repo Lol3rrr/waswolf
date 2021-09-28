@@ -1,7 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
-    error::Error,
-    fmt::{Debug, Display},
+    fmt::Debug,
 };
 
 use serenity::{
@@ -22,34 +21,47 @@ mod channels;
 mod start;
 mod stop;
 
+mod states;
+pub use states::*;
+
+mod traits;
+pub use traits::*;
+
+/// The State for a given Round
 #[derive(Debug, Clone)]
 pub struct RoundState<S> {
+    /// The Set of Users that can actually manage the Round
     owner: BTreeSet<UserId>,
+    /// The Root Message that is used to perform all the Configurations
     message: MessageId,
     channel: ChannelId,
+    /// The GuildID for the Round
     guild: GuildId,
+    /// The Current State of the Round
     state: S,
 }
 
+/// The Name of the Role used for Dead-Players
 const DEAD_ROLE_NAME: &str = "W-Dead";
 
 impl<S> RoundState<S> {
-    async fn get_msg(&self, ctx: &Context) -> Result<Message, serenity::Error> {
-        self.channel.message(&ctx.http, self.message).await
+    async fn get_msg(&self, ctx: &dyn BotContext) -> Result<Message, serenity::Error> {
+        self.channel.message(ctx.get_http(), self.message).await
     }
+
     pub async fn update_msg(
         &self,
-        ctx: &Context,
+        ctx: &dyn BotContext,
         msg: &str,
         reactions: &[Reactions],
     ) -> Result<Message, serenity::Error> {
         let mut cfg_message = self.get_msg(ctx).await?;
 
-        cfg_message.delete_reactions(&ctx.http).await?;
-        cfg_message.edit(&ctx.http, |m| m.content(msg)).await?;
+        cfg_message.delete_reactions(ctx.get_http()).await?;
+        cfg_message.edit(ctx.get_http(), |m| m.content(msg)).await?;
 
         for reaction in reactions {
-            cfg_message.react(&ctx.http, reaction).await?;
+            cfg_message.react(ctx.get_http(), reaction).await?;
         }
 
         Ok(cfg_message)
@@ -63,8 +75,8 @@ impl<S> RoundState<S> {
     /// Loads the ID of the Role for Dead players or creates it if it does not
     /// currently exist
     #[tracing::instrument(skip(self, ctx))]
-    async fn dead_role(&self, ctx: &Context) -> Result<RoleId, serenity::Error> {
-        let g_roles = self.guild.roles(&ctx.http).await?;
+    async fn dead_role(&self, ctx: &dyn BotContext) -> Result<RoleId, serenity::Error> {
+        let g_roles = self.guild.roles(ctx.get_http()).await?;
 
         let role_index_result = g_roles
             .iter()
@@ -77,7 +89,7 @@ impl<S> RoundState<S> {
 
                 let nrole = self
                     .guild
-                    .create_role(&ctx.http, |r| r.name(DEAD_ROLE_NAME).position(0))
+                    .create_role(ctx.get_http(), |r| r.name(DEAD_ROLE_NAME).position(0))
                     .await?;
 
                 nrole.id
@@ -88,8 +100,8 @@ impl<S> RoundState<S> {
     /// Loads the ID of the Role for Dead players or creates it if it does not
     /// currently exist
     #[tracing::instrument(skip(self, ctx))]
-    async fn everyone_role(&self, ctx: &Context) -> Result<RoleId, serenity::Error> {
-        let g_roles = self.guild.roles(&ctx.http).await?;
+    async fn everyone_role(&self, ctx: &dyn BotContext) -> Result<RoleId, serenity::Error> {
+        let g_roles = self.guild.roles(ctx.get_http()).await?;
 
         Ok(*g_roles
             .iter()
@@ -99,86 +111,7 @@ impl<S> RoundState<S> {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct RegisterUsers {
-    /// All the Participants for the Round
-    participants: Vec<UserId>,
-}
-#[derive(Debug, Clone)]
-pub struct RegisterRoles {
-    /// All the Participants for the Round
-    participants: Vec<UserId>,
-    /// The selected Roles for the current Round
-    roles: Vec<WereWolfRole>,
-    /// The current Page that is displayed for the Role-Selection
-    role_page: usize,
-}
-#[derive(Debug, Clone)]
-pub struct RoleCounts {
-    /// All the Participants for the current Round
-    participants: Vec<UserId>,
-    /// The Roles and the Number of Players for each Role
-    roles: BTreeMap<WereWolfRole, usize>,
-    /// The Messages used to get the Number of Players for a Role, which can
-    /// be given to Multiple Players
-    role_messages: HashMap<MessageId, WereWolfRole>,
-}
-#[derive(Debug, Clone)]
-pub struct Ongoing {
-    /// All the Participants for the Round as well as all their Roles
-    participants: BTreeMap<UserId, WereWolfRole>,
-    /// The ChannelID of the Moderator Channel
-    moderator_channel: ChannelId,
-    /// The Channels for all the Roles in the current Game
-    channels: BTreeMap<String, ChannelId>,
-}
-#[derive(Debug, Clone)]
-pub struct Done {}
-
 use async_trait::async_trait;
-
-#[derive(Clone, Copy)]
-pub struct TransitionContext<'a> {
-    pub bot_id: UserId,
-    pub ctx: &'a Context,
-}
-
-#[async_trait]
-pub trait Transition<S> {
-    async fn transition<'a>(source: S, context: TransitionContext<'a>) -> Self;
-}
-
-pub struct TransitionError(pub Box<dyn Error + Send + Sync>);
-impl TransitionError {
-    pub fn new<E>(err: E) -> Self
-    where
-        E: Error + Send + Sync + 'static,
-    {
-        Self(Box::new(err))
-    }
-}
-impl Debug for TransitionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Debug::fmt(&self.0, f)
-    }
-}
-impl Display for TransitionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Display::fmt(&self.0, f)
-    }
-}
-impl Error for TransitionError {}
-
-#[async_trait]
-pub trait TryTransition<S>
-where
-    Self: Sized,
-{
-    async fn try_transition<'a>(
-        source: S,
-        context: TransitionContext<'a>,
-    ) -> Result<Self, TransitionError>;
-}
 
 impl RoundState<RegisterUsers> {
     pub fn new(owner: UserId, message: MessageId, channel: ChannelId, guild: GuildId) -> Self {
@@ -390,7 +323,8 @@ impl TryTransition<RoundState<RegisterRoles>> for RoundState<RoleCounts> {
     ) -> Result<Self, TransitionError> {
         let mut role_messages = HashMap::new();
 
-        let data = context.ctx.data.read().await;
+        let data_lock = context.ctx.get_data();
+        let data = data_lock.read().await;
         let role_counts = data.get::<RoleCount>().expect("The general Datastructure to store the Messages for Role-Counts should always be registered");
         let mut role_counts = role_counts.lock().await;
 
@@ -401,7 +335,7 @@ impl TryTransition<RoundState<RegisterRoles>> for RoundState<RoleCounts> {
             );
             let role_q_msg = source
                 .channel
-                .say(&context.ctx.http, role_msg)
+                .say(&context.ctx.get_http(), role_msg)
                 .await
                 .map_err(TransitionError::new)?;
 

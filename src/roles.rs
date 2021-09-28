@@ -1,9 +1,6 @@
 use std::fmt::Display;
 
-use serenity::{
-    client::Context,
-    model::channel::{Message, ReactionType},
-};
+use serenity::model::channel::{Message, ReactionType};
 
 mod cfg_reactions;
 
@@ -13,15 +10,17 @@ pub use roles_msg::get_roles_msg;
 mod distribute;
 pub use distribute::distribute_roles;
 
+use crate::rounds::BotContext;
+
 pub async fn cfg_role_msg_reactions(
     message: &Message,
-    ctx: &Context,
+    ctx: &dyn BotContext,
     roles: &[WereWolfRole],
     page: usize,
 ) {
     let reactions = cfg_reactions::reactions(roles, page);
     for reaction in reactions {
-        if let Err(e) = message.react(&ctx.http, reaction).await {
+        if let Err(e) = message.react(ctx.get_http(), reaction).await {
             tracing::error!("Adding Reaction: {:?}", e);
         }
     }

@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use serenity::{
-    client::Context,
+    http::Http,
     model::{
         channel::{ChannelType, GuildChannel, PermissionOverwrite, PermissionOverwriteType},
         id::{ChannelId, GuildId, UserId},
@@ -10,6 +10,8 @@ use serenity::{
 };
 
 use crate::roles::WereWolfRole;
+
+use super::BotContext;
 
 #[derive(Debug)]
 pub enum GetChannelError {
@@ -22,7 +24,7 @@ pub enum GetChannelError {
 /// Either way the given Permissions are applied to the Channel.
 async fn get_channel(
     channel_name: &str,
-    ctx: &Context,
+    ctx: &dyn BotContext,
     guild_id: &GuildId,
     guild_channel: &HashMap<ChannelId, GuildChannel>,
     default_permissions: &[PermissionOverwrite],
@@ -34,7 +36,7 @@ async fn get_channel(
         Some((id, _)) => {
             // Deny everyone access to the channel
             for permission in default_permissions.iter() {
-                id.create_permission(&ctx.http, permission)
+                id.create_permission(ctx.get_http(), permission)
                     .await
                     .map_err(|_| GetChannelError::UpdatingPermissions)?;
             }
@@ -43,7 +45,7 @@ async fn get_channel(
         }
         None => {
             guild_id
-                .create_channel(&ctx.http, |c| {
+                .create_channel(ctx.get_http(), |c| {
                     c.name(channel_name)
                         .kind(ChannelType::Text)
                         .permissions(default_permissions.to_vec())
@@ -72,7 +74,7 @@ pub enum GetCategoryError {
 /// Gets or creates a Category with the given Name
 async fn get_category(
     name: &str,
-    ctx: &Context,
+    ctx_http: &Http,
     guild: &GuildId,
     guild_channel: &HashMap<ChannelId, GuildChannel>,
 ) -> Result<ChannelId, GetCategoryError> {
@@ -87,7 +89,7 @@ async fn get_category(
         Some((id, _)) => *id,
         None => {
             let category = guild
-                .create_channel(&ctx.http, |c| c.name(name).kind(ChannelType::Category))
+                .create_channel(ctx_http, |c| c.name(name).kind(ChannelType::Category))
                 .await
                 .map_err(|_| GetCategoryError::CreatingCategory)?;
             category.id
@@ -100,26 +102,26 @@ const ACTIVE_CATEGORY_NAME: &str = "W-Active";
 const INACTIVE_CATEGORY_NAME: &str = "W-Inactive";
 
 pub async fn setup_active_category(
-    ctx: &Context,
+    ctx: &dyn BotContext,
     guild: &GuildId,
     guild_channel: &HashMap<ChannelId, GuildChannel>,
 ) -> Result<ChannelId, GetCategoryError> {
     get_category(
         &ACTIVE_CATEGORY_NAME.to_lowercase(),
-        ctx,
+        ctx.get_http(),
         guild,
         guild_channel,
     )
     .await
 }
 pub async fn setup_inactive_category(
-    ctx: &Context,
+    ctx: &dyn BotContext,
     guild: &GuildId,
     guild_channel: &HashMap<ChannelId, GuildChannel>,
 ) -> Result<ChannelId, GetCategoryError> {
     get_category(
         &INACTIVE_CATEGORY_NAME.to_lowercase(),
-        ctx,
+        ctx.get_http(),
         guild,
         guild_channel,
     )
@@ -145,7 +147,7 @@ pub async fn setup_role_channels(
     guild: GuildId,
     guild_channel: &HashMap<ChannelId, GuildChannel>,
     category_id: &ChannelId,
-    ctx: &Context,
+    ctx: &dyn BotContext,
     moderators: &BTreeSet<UserId>,
 ) -> Result<BTreeMap<String, ChannelId>, SetupChannelError> {
     let mut role_channel: BTreeMap<String, ChannelId> = BTreeMap::new();
@@ -163,14 +165,14 @@ pub async fn setup_role_channels(
         .await?;
 
         channel_id
-            .edit(&ctx.http, |c| c.category(*category_id))
+            .edit(ctx.get_http(), |c| c.category(*category_id))
             .await
             .map_err(|_| SetupChannelError::MoveChannel)?;
 
         // Give the Moderator access to the Channel
         for moderator in moderators.iter() {
             channel_id
-                .create_permission(&ctx.http, &channel_access_permissions(*moderator))
+                .create_permission(ctx.get_http(), &channel_access_permissions(*moderator))
                 .await
                 .map_err(|_| SetupChannelError::UpdatingChannelPermissions)?;
         }
@@ -188,7 +190,7 @@ pub async fn setup_moderator_channel(
     guild: GuildId,
     guild_channel: &HashMap<ChannelId, GuildChannel>,
     category_id: &ChannelId,
-    ctx: &Context,
+    ctx: &dyn BotContext,
     moderators: &BTreeSet<UserId>,
 ) -> Result<ChannelId, SetupChannelError> {
     let channel_id = get_channel(
@@ -201,14 +203,14 @@ pub async fn setup_moderator_channel(
     .await?;
 
     channel_id
-        .edit(&ctx.http, |c| c.category(*category_id))
+        .edit(ctx.get_http(), |c| c.category(*category_id))
         .await
         .map_err(|_| SetupChannelError::MoveChannel)?;
 
     for moderator in moderators.iter() {
         let access_permissions = channel_access_permissions(*moderator);
         channel_id
-            .create_permission(&ctx.http, &access_permissions)
+            .create_permission(ctx.get_http(), &access_permissions)
             .await
             .map_err(|_| SetupChannelError::UpdatingChannelPermissions)?;
     }
