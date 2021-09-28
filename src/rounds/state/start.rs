@@ -106,7 +106,7 @@ pub async fn start(
         &guild_channel,
         &active_category_id,
         ctx,
-        &source.owner,
+        &source.mods,
     )
     .await
     .map_err(StartError::SettingUpChannels)?;
@@ -117,7 +117,7 @@ pub async fn start(
         &guild_channel,
         &active_category_id,
         ctx,
-        &source.owner,
+        &source.mods,
     )
     .await
     .map_err(|_| StartError::SettingUpModeratorChannel)?;

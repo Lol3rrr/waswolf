@@ -31,7 +31,7 @@ pub use traits::*;
 #[derive(Debug, Clone)]
 pub struct RoundState<S> {
     /// The Set of Users that can actually manage the Round
-    owner: BTreeSet<UserId>,
+    mods: BTreeSet<UserId>,
     /// The Root Message that is used to perform all the Configurations
     message: MessageId,
     channel: ChannelId,
@@ -46,14 +46,14 @@ const DEAD_ROLE_NAME: &str = "W-Dead";
 
 impl<S> RoundState<S> {
     async fn new_raw(
-        owners: BTreeSet<UserId>,
+        mods: BTreeSet<UserId>,
         message: MessageId,
         channel: ChannelId,
         guild: GuildId,
         state: S,
     ) -> Self {
         Self {
-            owner: owners,
+            mods,
             message,
             channel,
             guild,
@@ -63,7 +63,7 @@ impl<S> RoundState<S> {
 
     pub fn transition<T>(self, n_state: T) -> RoundState<T> {
         RoundState {
-            owner: self.owner,
+            mods: self.mods,
             message: self.message,
             channel: self.channel,
             guild: self.guild,
@@ -95,7 +95,7 @@ impl<S> RoundState<S> {
 
     /// Checks if the given User is registered as an Owner
     pub fn is_owner(&self, id: &UserId) -> bool {
-        self.owner.contains(id)
+        self.mods.contains(id)
     }
 
     /// Loads the ID of the Role for Dead players or creates it if it does not
@@ -159,9 +159,13 @@ impl RoundState<RegisterUsers> {
         Self::new_raw(mods, message, channel, guild, state).await
     }
 
+    /// Adds a new Player to the Round
     pub fn add_participant(&mut self, user: UserId) {
         self.state.participants.push(user);
+
+        tracing::debug!("Added User({:?}) to Round", user);
     }
+    /// Removes a Player from the round again
     pub fn remove_participant(&mut self, user: UserId) {
         let index_result = self
             .state
@@ -180,11 +184,17 @@ impl RoundState<RegisterUsers> {
         tracing::debug!("Removed User({:?}) from Round", user);
     }
 
+    #[deprecated(
+        note = "Moderators should be set when creating the Round and not be modified afterwards"
+    )]
     pub fn add_moderator(&mut self, moderator: UserId) {
-        self.owner.insert(moderator);
+        self.mods.insert(moderator);
     }
+    #[deprecated(
+        note = "Moderators should be set when creating the Round and not be modified afterwards"
+    )]
     pub fn remove_moderator(&mut self, moderator: UserId) {
-        self.owner.remove(&moderator);
+        self.mods.remove(&moderator);
     }
 }
 
@@ -314,7 +324,7 @@ impl TryTransition<RoundState<RegisterUsers>> for RoundState<RegisterRoles> {
         tracing::debug!(
             "Configured Users({}) and Mods({})",
             source.state.participants.len(),
-            source.owner.len()
+            source.mods.len()
         );
 
         let w_roles = WereWolfRole::all_roles();
