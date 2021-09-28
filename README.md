@@ -21,3 +21,7 @@ bot
 * Szenarios: A Set of Roles to use for a Game
 * Manage Roles using a Chat
 * Manage "Szenarios" using Chat
+
+### Testing
+Add automated End-to-End testing by writing a small second bot which will execute
+the Commands and all that and check for the correct Reactions by the actual Bot

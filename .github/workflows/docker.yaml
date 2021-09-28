@@ -1,12 +1,28 @@
-name: Build Release Docker
+name: Test/Build
 on:
   push:
     branches:
       - master
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Setting up Rust-Toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          default: true
+          override: true
+      - name: Testing
+        run: cargo test
+
   build:
     runs-on: ubuntu-latest
+    needs: test
     steps:
       - name: Checkout
         uses: actions/checkout@v2
