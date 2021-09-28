@@ -14,12 +14,22 @@ use super::state::{
     TryTransition,
 };
 
+/// The State Machine wrapper for the Rounds, which allows for easier interactions with it in the
+/// Rest of the Codebase as there is just a single Type to interact with and call all the methods
+/// on.
 #[derive(Debug, Clone)]
 pub enum RoundSM {
+    /// The initial State where Users are still entering the Round
     RegisterUsers(RoundState<RegisterUsers>),
+    /// The State where the Mods are configuring all the Roles that should participate in the
+    /// current Round
     RegisterRoles(RoundState<RegisterRoles>),
+    /// The State where we take note of the number of times certain roles should appear in the
+    /// final Round/ how many players should be assigned the Role
     RoleCounts(RoundState<RoleCounts>),
+    /// This State describes an ongoing Round
     Ongoing(RoundState<Ongoing>),
+    /// This State describes a finished Round which has no further actions
     Done(RoundState<Done>),
 }
 
@@ -146,7 +156,6 @@ impl RoundSM {
                     }
                 }
             }
-            Self::RoleCounts(state) => Ok(Self::RoleCounts(state)),
             Self::Ongoing(state) => {
                 if Reactions::Stop == react_data {
                     tracing::info!("Stopping/Ending Round");
@@ -158,7 +167,7 @@ impl RoundSM {
 
                 Ok(Self::Ongoing(state))
             }
-            Self::Done(state) => Ok(Self::Done(state)),
+            state => Ok(state),
         }
     }
 
@@ -205,9 +214,7 @@ impl RoundSM {
                 state.remove_role(removed_role);
                 Self::RegisterRoles(state)
             }
-            Self::RoleCounts(state) => Self::RoleCounts(state),
-            Self::Ongoing(state) => Self::Ongoing(state),
-            Self::Done(state) => Self::Done(state),
+            state => state,
         }
     }
 
@@ -222,8 +229,6 @@ impl RoundSM {
         let t_ctx = TransitionContext { bot_id, ctx };
 
         match self {
-            Self::RegisterUsers(state) => Ok(Self::RegisterUsers(state)),
-            Self::RegisterRoles(state) => Ok(Self::RegisterRoles(state)),
             Self::RoleCounts(mut state) => {
                 state
                     .role_reply(ctx, message_id, reply)
@@ -239,8 +244,7 @@ impl RoundSM {
                     Ok(Self::RoleCounts(state))
                 }
             }
-            Self::Ongoing(state) => Ok(Self::Ongoing(state)),
-            Self::Done(state) => Ok(Self::Done(state)),
+            state => Ok(state),
         }
     }
 
