@@ -14,7 +14,6 @@ Running the latest Version of the Bot:
 bot
 
 ## Changes
-* Moderator based off the Roles instead of reactions
 * Easier addition and modification of roles
 * Change Channel-Names for the Bot
 

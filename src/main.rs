@@ -9,6 +9,7 @@ fn main() {
     let tracing_directive_str =
         env::var("RUST_LOG").unwrap_or_else(|_| "werewolf_bot=info".to_owned());
     let tracing_sub = tracing_subscriber::FmtSubscriber::builder()
+        .json()
         .with_level(true)
         .with_env_filter(
             tracing_subscriber::EnvFilter::from_default_env()
