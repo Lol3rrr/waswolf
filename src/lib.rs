@@ -24,7 +24,9 @@ use rounds::{Round, RoundsMap};
 mod reactions;
 pub use reactions::Reactions;
 
-mod help;
+use crate::rounds::BotContext;
+
+mod util;
 
 struct Rounds;
 impl TypeMapKey for Rounds {
@@ -48,7 +50,10 @@ fn get_rounds(map: &TypeMap) -> &RoundsMap {
 }
 
 /// The Bot-Prefix used for recognizing Commands
+#[cfg(not(debug_assertions))]
 const PREFIX: &str = "/";
+#[cfg(debug_assertions)]
+const PREFIX: &str = "!";
 
 #[async_trait]
 impl EventHandler for Handler {
@@ -150,7 +155,7 @@ impl EventHandler for Handler {
     }
 
     async fn message(&self, ctx: Context, new_message: Message) {
-        let ref_message = match &new_message.referenced_message {
+        let mut ref_message = match &new_message.referenced_message {
             Some(m) => m.clone(),
             None => return,
         };
@@ -175,6 +180,15 @@ impl EventHandler for Handler {
         let mut round = round_mutex.lock().await;
         if let Err(e) = round.role_reply(self.id, &ctx, reply_id, new_message).await {
             tracing::error!("{:?}", e);
+
+            if let Err(e) = ref_message
+                .edit(&ctx.http, |edit| {
+                    edit.content("Error setting up the Moderator Channel")
+                })
+                .await
+            {
+                tracing::error!("Updating Message with Error: {:?}", e);
+            };
 
             {
                 let mut data = ctx.data.write().await;
@@ -238,15 +252,16 @@ async fn werewolf(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
 
     tracing::info!("Starting new Round");
 
-    let entry_msg = format!("Creating new Round.\nReact with:\n{}: Enter as a Player\n{}: Enter as a Moderator\n{}: Start the Round itself", Reactions::Entry, Reactions::ModEntry, Reactions::Confirm);
+    let entry_msg = format!(
+        "Creating new Round.\nReact with:\n{}: Enter as a Player\n{}: Start the Round itself",
+        Reactions::Entry,
+        Reactions::Confirm
+    );
 
     let result = match channel_id
         .send_message(&ctx.http, |m| {
-            m.content(entry_msg).reactions(&[
-                Reactions::Entry,
-                Reactions::ModEntry,
-                Reactions::Confirm,
-            ])
+            m.content(entry_msg)
+                .reactions(&[Reactions::Entry, Reactions::Confirm])
         })
         .await
     {
@@ -259,9 +274,12 @@ async fn werewolf(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
     let msg_id = result.id;
 
     // TODO
-    // Get all the Users that are assigned to the Moderator/Game-Master Role
-    let mut mods = BTreeSet::new();
-    mods.insert(msg.author.id);
+    // Select the Role Name accordingly and dont panic when the Role can not be found but instead
+    // send a nicer error message
+    let role = util::roles::find_role("Game Master", guild_id, ctx.get_http())
+        .await
+        .unwrap();
+    let mods = util::roles::role_users(role, guild_id, ctx.get_http()).await;
 
     rounds.insert(
         guild_id,
@@ -278,7 +296,7 @@ async fn help(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
     if let Err(e) = msg
         .channel_id
         .send_message(&ctx.http, |m| {
-            help::generate_help_message(m);
+            util::help::generate_help_message(m);
             m
         })
         .await

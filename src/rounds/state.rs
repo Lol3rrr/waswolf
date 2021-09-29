@@ -14,7 +14,7 @@ use serenity::{
 
 use crate::{
     roles::{self, WereWolfRole},
-    Reactions, RoleCount,
+    util, Reactions, RoleCount,
 };
 
 mod channels;
@@ -102,15 +102,9 @@ impl<S> RoundState<S> {
     /// currently exist
     #[tracing::instrument(skip(self, ctx))]
     async fn dead_role(&self, ctx: &dyn BotContext) -> Result<RoleId, serenity::Error> {
-        let g_roles = self.guild.roles(ctx.get_http()).await?;
-
-        let role_index_result = g_roles
-            .iter()
-            .find(|(_, role)| role.name.to_lowercase() == DEAD_ROLE_NAME.to_lowercase());
-
-        let id = match role_index_result {
-            Some((id, _)) => *id,
-            None => {
+        let id = match util::roles::find_role(DEAD_ROLE_NAME, self.guild, ctx.get_http()).await {
+            Ok(id) => id,
+            Err(_) => {
                 tracing::debug!("Creating Role for Dead-Players: {:?}", DEAD_ROLE_NAME);
 
                 let nrole = self
@@ -121,6 +115,7 @@ impl<S> RoundState<S> {
                 nrole.id
             }
         };
+
         Ok(id)
     }
     /// Loads the ID of the Role for Dead players or creates it if it does not

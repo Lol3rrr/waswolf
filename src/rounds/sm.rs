@@ -78,12 +78,6 @@ impl RoundSM {
                     tracing::debug!("Added User({:?}) to Round", user_id);
                     return Ok(Self::RegisterUsers(state));
                 }
-                if Reactions::ModEntry == react_data {
-                    state.add_moderator(user_id);
-
-                    tracing::debug!("Added Moderator({:?}) to Round", user_id);
-                    return Ok(Self::RegisterUsers(state));
-                }
 
                 if Reactions::Confirm == react_data {
                     if !state.is_owner(&user_id) {
@@ -186,12 +180,6 @@ impl RoundSM {
                     tracing::debug!("Removed User({:?}) from Round", user_id);
 
                     state.remove_participant(user_id);
-                    return Self::RegisterUsers(state);
-                }
-                if Reactions::ModEntry == react_data {
-                    tracing::debug!("Removed Moderator({:?}) from Round", user_id);
-
-                    state.remove_moderator(user_id);
                     return Self::RegisterUsers(state);
                 }
 

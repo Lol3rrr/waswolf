@@ -141,6 +141,45 @@ impl From<GetChannelError> for SetupChannelError {
     }
 }
 
+async fn setup_channel<I>(
+    name: &str,
+    guild: &GuildId,
+    guild_channel: &HashMap<ChannelId, GuildChannel>,
+    category_id: ChannelId,
+    default_permissions: &[PermissionOverwrite],
+    extra_users: I,
+    ctx: &dyn BotContext,
+) -> Result<ChannelId, SetupChannelError>
+where
+    I: Iterator<Item = UserId>,
+{
+    let lowercase_name = name.to_lowercase();
+
+    let channel_id = get_channel(
+        &lowercase_name,
+        ctx,
+        guild,
+        guild_channel,
+        default_permissions,
+    )
+    .await?;
+
+    channel_id
+        .edit(ctx.get_http(), |c| c.category(category_id))
+        .await
+        .map_err(|_| SetupChannelError::MoveChannel)?;
+
+    for user in extra_users {
+        let access_permissions = channel_access_permissions(user);
+        channel_id
+            .create_permission(ctx.get_http(), &access_permissions)
+            .await
+            .map_err(|_| SetupChannelError::UpdatingChannelPermissions)?;
+    }
+
+    Ok(channel_id)
+}
+
 pub async fn setup_role_channels(
     roles: impl Iterator<Item = &WereWolfRole>,
     default_permissions: Vec<PermissionOverwrite>,
@@ -155,27 +194,16 @@ pub async fn setup_role_channels(
     for role in roles {
         let channel_name = format!("{}", role).to_lowercase();
 
-        let channel_id = get_channel(
+        let channel_id = setup_channel(
             &channel_name,
-            ctx,
             &guild,
             guild_channel,
+            *category_id,
             &default_permissions,
+            moderators.iter().map(|id| *id),
+            ctx,
         )
         .await?;
-
-        channel_id
-            .edit(ctx.get_http(), |c| c.category(*category_id))
-            .await
-            .map_err(|_| SetupChannelError::MoveChannel)?;
-
-        // Give the Moderator access to the Channel
-        for moderator in moderators.iter() {
-            channel_id
-                .create_permission(ctx.get_http(), &channel_access_permissions(*moderator))
-                .await
-                .map_err(|_| SetupChannelError::UpdatingChannelPermissions)?;
-        }
 
         role_channel.insert(format!("{}", role), channel_id);
     }
@@ -193,27 +221,14 @@ pub async fn setup_moderator_channel(
     ctx: &dyn BotContext,
     moderators: &BTreeSet<UserId>,
 ) -> Result<ChannelId, SetupChannelError> {
-    let channel_id = get_channel(
-        &MOD_CHANNEL_NAME.to_lowercase(),
-        ctx,
+    setup_channel(
+        &MOD_CHANNEL_NAME,
         &guild,
         guild_channel,
+        *category_id,
         &default_permissions,
+        moderators.iter().map(|id| *id),
+        ctx,
     )
-    .await?;
-
-    channel_id
-        .edit(ctx.get_http(), |c| c.category(*category_id))
-        .await
-        .map_err(|_| SetupChannelError::MoveChannel)?;
-
-    for moderator in moderators.iter() {
-        let access_permissions = channel_access_permissions(*moderator);
-        channel_id
-            .create_permission(ctx.get_http(), &access_permissions)
-            .await
-            .map_err(|_| SetupChannelError::UpdatingChannelPermissions)?;
-    }
-
-    Ok(channel_id)
+    .await
 }
