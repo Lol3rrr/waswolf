@@ -172,19 +172,6 @@ impl RoundState<RegisterUsers> {
 
         tracing::debug!("Removed User({:?}) from Round", user);
     }
-
-    #[deprecated(
-        note = "Moderators should be set when creating the Round and not be modified afterwards"
-    )]
-    pub fn add_moderator(&mut self, moderator: UserId) {
-        self.mods.insert(moderator);
-    }
-    #[deprecated(
-        note = "Moderators should be set when creating the Round and not be modified afterwards"
-    )]
-    pub fn remove_moderator(&mut self, moderator: UserId) {
-        self.mods.remove(&moderator);
-    }
 }
 
 impl RoundState<RegisterRoles> {

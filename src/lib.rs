@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 
 use async_trait::async_trait;
 use serenity::{
@@ -252,6 +252,29 @@ async fn werewolf(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
 
     tracing::info!("Starting new Round");
 
+    const MOD_ROLE_NAME: &str = "Game Master";
+    let mod_role = match util::roles::find_role(MOD_ROLE_NAME, guild_id, ctx.get_http()).await {
+        Ok(r) => r,
+        Err(util::roles::FindRoleError::NotFound) => {
+            tracing::error!("'Game Master'-Role does not exist on the Guild");
+            if let Err(e) = channel_id
+                .send_message(ctx.get_http(), |m| {
+                    m.content("Could not start a new Round as it could not find a Role with the Name 'Game Master'")
+                })
+                .await
+            {
+                tracing::error!("Sending Discord error message: {:?}", e);
+            }
+
+            return Ok(());
+        }
+        Err(e) => {
+            tracing::error!("Error getting 'Game Master'-Role for Guild: {:?}", e);
+            return Ok(());
+        }
+    };
+    let mods = util::roles::role_users(mod_role, guild_id, ctx.get_http()).await;
+
     let entry_msg = format!(
         "Creating new Round.\nReact with:\n{}: Enter as a Player\n{}: Start the Round itself",
         Reactions::Entry,
@@ -272,14 +295,6 @@ async fn werewolf(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
         }
     };
     let msg_id = result.id;
-
-    // TODO
-    // Select the Role Name accordingly and dont panic when the Role can not be found but instead
-    // send a nicer error message
-    let role = util::roles::find_role("Game Master", guild_id, ctx.get_http())
-        .await
-        .unwrap();
-    let mods = util::roles::role_users(role, guild_id, ctx.get_http()).await;
 
     rounds.insert(
         guild_id,
