@@ -28,6 +28,8 @@ use crate::rounds::BotContext;
 
 mod util;
 
+mod storage;
+
 struct Rounds;
 impl TypeMapKey for Rounds {
     type Value = RoundsMap;
