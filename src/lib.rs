@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
 use serenity::{
@@ -7,7 +7,7 @@ use serenity::{
         macros::{command, group},
         Args, CommandResult, StandardFramework,
     },
-    http::Http,
+    http::{CacheHttp, Http},
     model::{
         channel::Message,
         id::{GuildId, MessageId, UserId},
@@ -40,15 +40,31 @@ impl TypeMapKey for RoleCount {
     type Value = Mutex<HashMap<MessageId, GuildId>>;
 }
 
+struct BotStorage;
+impl TypeMapKey for BotStorage {
+    type Value = storage::Storage;
+}
+
 /// The general Handler for the Bot
 struct Handler {
     /// The UserID of the Bot itself
     id: UserId,
 }
 
+impl Handler {
+    pub fn new(id: UserId) -> Self {
+        Self { id }
+    }
+}
+
 fn get_rounds(map: &TypeMap) -> &RoundsMap {
     map.get::<Rounds>()
         .expect("The shared Rounds Datastructure should always exist on a running Bot-Instance")
+}
+
+fn get_storage(map: &TypeMap) -> &storage::Storage {
+    map.get::<BotStorage>()
+        .expect("The Shared Storage Backend should always exist on a running Bot-Instance")
 }
 
 /// The Bot-Prefix used for recognizing Commands
@@ -220,7 +236,7 @@ impl EventHandler for Handler {
 }
 
 #[group]
-#[commands(help, werewolf)]
+#[commands(help, werewolf, list_roles)]
 struct General;
 
 #[command]
@@ -324,12 +340,68 @@ async fn help(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
     Ok(())
 }
 
+#[command]
+#[aliases("list-roles")]
+async fn list_roles(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
+    tracing::debug!("Received list-roles Command");
+
+    let channel_id = msg.channel_id;
+
+    let data = ctx.data.read().await;
+    let storage = get_storage(&data);
+
+    let roles_result = storage.backend().load_roles(msg.guild_id.unwrap()).await;
+
+    let roles = match roles_result {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!("Loading Roles: {:?}", e);
+            if let Err(e) = channel_id
+                .send_message(ctx.http(), |m| m.content("Could not load Roles"))
+                .await
+            {
+                tracing::error!("Sending Error Message: {:?}", e);
+            }
+
+            return Ok(());
+        }
+    };
+
+    let content = if roles.len() == 0 {
+        "No Roles configured".to_owned()
+    } else {
+        let mut tmp = "Roles \n\n".to_owned();
+
+        for role in roles {
+            let role_str = "{Role}";
+            tmp.push_str(&format!("{}\n", role_str));
+        }
+
+        tmp
+    };
+
+    match channel_id
+        .send_message(ctx.http(), |m| m.content(content))
+        .await
+    {
+        Ok(_) => {
+            tracing::debug!("Send Role-List");
+        }
+        Err(e) => {
+            tracing::error!("Sending Role-List: {:?}", e);
+        }
+    };
+
+    Ok(())
+}
+
 /// Initialize the Client instance with all the needed Data
 /// to function properly
-async fn init_bot_data(client: &Client) {
+async fn init_bot_data(client: &Client, bot_storage: storage::Storage) {
     let mut c_data = client.data.write().await;
     c_data.insert::<Rounds>(RoundsMap::new());
     c_data.insert::<RoleCount>(Mutex::new(HashMap::default()));
+    c_data.insert::<BotStorage>(bot_storage);
 }
 
 /// Actually starts the Bot itself
@@ -342,15 +414,20 @@ pub async fn start(token: String) {
         .group(&GENERAL_GROUP);
 
     // Create the HTTP-Instance for the Bot to use
-    let http = Http::new_with_token(&token);
+    let http = Arc::new(Http::new_with_token(&token));
     let bot_id = {
         let user = http.get_current_user().await.unwrap();
         user.id
     };
 
+    let discord_storage = storage::discord::DiscordStorage::new(http);
+    let bot_storage = storage::Storage::new(discord_storage);
+
+    let handler = Handler::new(bot_id);
+
     // Actually create the Bot instance with all the needed Settings/Configs
     let mut client = Client::builder(token)
-        .event_handler(Handler { id: bot_id })
+        .event_handler(handler)
         .framework(framework)
         .intents(
             GatewayIntents::GUILD_MEMBERS
@@ -362,7 +439,7 @@ pub async fn start(token: String) {
         .unwrap();
 
     // Initialize the Bots inner State
-    init_bot_data(&client).await;
+    init_bot_data(&client, bot_storage).await;
 
     // Actually run the Bot
     if let Err(e) = client.start().await {
