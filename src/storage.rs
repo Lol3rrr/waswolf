@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use serenity::model::id::GuildId;
 use std::{error::Error, sync::Arc};
 
-use crate::roles::WereWolfRole;
+use crate::roles::WereWolfRoleConfig;
 
 pub mod discord;
 
@@ -11,14 +11,24 @@ pub mod discord;
 #[async_trait]
 pub trait StorageBackend {
     /// Attempt to load all the Rules stored for the given Guild
-    async fn load_roles(&self, guild: GuildId) -> Result<Vec<WereWolfRole>, Box<dyn Error + Send>>;
+    async fn load_roles(
+        &self,
+        guild: GuildId,
+    ) -> Result<Vec<WereWolfRoleConfig>, Box<dyn Error + Send>>;
 
     /// Attempt to set a Role for the Guild, this can be used both for updating an existing Role on
     /// the Guild and adding a new Role to the Guild
     async fn set_role(
         &self,
         guild: GuildId,
-        role: WereWolfRole,
+        role: WereWolfRoleConfig,
+    ) -> Result<(), Box<dyn Error + Send>>;
+
+    /// Attempts to remove the Role with the given Name again
+    async fn remove_role(
+        &self,
+        guild: GuildId,
+        role_name: &str,
     ) -> Result<(), Box<dyn Error + Send>>;
 }
 

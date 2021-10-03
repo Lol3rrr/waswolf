@@ -24,7 +24,7 @@ use rounds::{Round, RoundsMap};
 mod reactions;
 pub use reactions::Reactions;
 
-use crate::rounds::BotContext;
+use crate::{roles::WereWolfRoleConfig, rounds::BotContext};
 
 mod util;
 
@@ -236,7 +236,7 @@ impl EventHandler for Handler {
 }
 
 #[group]
-#[commands(help, werewolf, list_roles)]
+#[commands(help, werewolf, add_role, remove_role, list_roles)]
 struct General;
 
 #[command]
@@ -373,8 +373,7 @@ async fn list_roles(ctx: &Context, msg: &Message, _args: Args) -> CommandResult 
         let mut tmp = "Roles \n\n".to_owned();
 
         for role in roles {
-            let role_str = "{Role}";
-            tmp.push_str(&format!("{}\n", role_str));
+            tmp.push_str(&format!("* {}\n", role));
         }
 
         tmp
@@ -389,6 +388,107 @@ async fn list_roles(ctx: &Context, msg: &Message, _args: Args) -> CommandResult 
         }
         Err(e) => {
             tracing::error!("Sending Role-List: {:?}", e);
+        }
+    };
+
+    Ok(())
+}
+
+#[command]
+#[aliases("add-role")]
+async fn add_role(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
+    tracing::debug!("Received add-role Command");
+
+    let channel_id = msg.channel_id;
+    let guild_id = msg.guild_id.unwrap();
+
+    let name = "test-role".to_string();
+    let emoji = "test-emoji".to_string();
+    let mutli_player = false;
+    let masks_role = false;
+    let new_config = WereWolfRoleConfig::new(name, emoji, mutli_player, masks_role);
+
+    let data = ctx.data.read().await;
+    let storage = get_storage(&data);
+
+    // TODO
+    // Check if the Role already exists
+
+    match storage.backend().set_role(guild_id, new_config).await {
+        Ok(_) => {
+            tracing::debug!("Created new Role");
+
+            if let Err(e) = channel_id
+                .send_message(ctx.http(), |m| m.content("Successfully added the Role"))
+                .await
+            {
+                tracing::error!("Sending Confirmation message: {:?}", e);
+            }
+        }
+        Err(e) => {
+            tracing::error!("Setting Role: {:?}", e);
+
+            if let Err(e) = channel_id
+                .send_message(ctx.http(), |m| m.content("Could not add the Role"))
+                .await
+            {
+                tracing::error!("Sending Error Message: {:?}", e);
+            }
+        }
+    };
+
+    Ok(())
+}
+
+#[command]
+#[aliases("remove-role")]
+async fn remove_role(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
+    tracing::debug!("Received remove-role Command");
+
+    let channel_id = msg.channel_id;
+    let guild_id = msg.guild_id.unwrap();
+
+    let role_name = match args.current() {
+        Some(r) => r,
+        None => {
+            if let Err(e) = channel_id
+                .send_message(ctx.http(), |m| {
+                    m.content("Must supply the Name of the Role to remove")
+                })
+                .await
+            {
+                tracing::error!("Sending invalid Args Message: {:?}", e);
+            }
+
+            return Ok(());
+        }
+    };
+
+    let data = ctx.data.read().await;
+    let storage = get_storage(&data);
+
+    match storage.backend().remove_role(guild_id, role_name).await {
+        Ok(_) => {
+            if let Err(e) = channel_id
+                .send_message(ctx.http(), |m| {
+                    m.content(format!("Removed Role \"{}\"", role_name))
+                })
+                .await
+            {
+                tracing::error!("Sending Confirmation message: {:?}", e);
+            }
+        }
+        Err(e) => {
+            tracing::error!("Removing Role: {:?}", e);
+
+            if let Err(e) = channel_id
+                .send_message(ctx.http(), |m| {
+                    m.content(format!("Could not remove Role \"{}\"", role_name))
+                })
+                .await
+            {
+                tracing::error!("Sending Error message: {:?}", e);
+            }
         }
     };
 

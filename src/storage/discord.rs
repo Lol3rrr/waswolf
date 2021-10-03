@@ -5,12 +5,13 @@ use serenity::{
     futures::StreamExt,
     http::Http,
     model::{
-        channel::ChannelType,
-        id::{ChannelId, GuildId},
+        channel::{ChannelType, Message},
+        id::{ChannelId, GuildId, MessageId, UserId},
     },
+    FutureExt,
 };
 
-use crate::roles::WereWolfRole;
+use crate::roles::WereWolfRoleConfig;
 
 use super::StorageBackend;
 
@@ -91,6 +92,50 @@ impl DiscordStorage {
 
         Err(())
     }
+
+    async fn settings_message_iter(
+        &'_ self,
+        channel_id: ChannelId,
+        bot_id: UserId,
+    ) -> impl serenity::futures::Stream<Item = Message> + '_ {
+        let raw_msg_iter = channel_id.messages_iter(self.http.as_ref()).boxed();
+
+        raw_msg_iter
+            .filter_map(|raw_message| {
+                ready(match raw_message {
+                    Ok(m) => Some(m),
+                    Err(_) => None,
+                })
+            })
+            .filter(move |m| ready(m.author.id == bot_id))
+    }
+
+    async fn find_role_message(
+        &self,
+        channel_id: ChannelId,
+        bot_id: UserId,
+        role_name: &str,
+    ) -> Result<MessageId, ()> {
+        // TODO
+
+        let message_iter = self.settings_message_iter(channel_id, bot_id).await;
+
+        let mut result_iter = message_iter
+            .map(|msg| {
+                let parsed = serde_json::from_str::<WereWolfRoleConfig>(&msg.content);
+                (msg, parsed)
+            })
+            .filter(|(_, p_res)| ready(p_res.is_ok()))
+            .map(|(msg, tmp)| (msg, tmp.unwrap()))
+            .filter(|(_, config)| ready(config.name() == role_name));
+
+        match result_iter.next().await {
+            Some((c, _)) => Ok(c.id),
+            None => {
+                todo!("Handle non existing Role Search")
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -123,7 +168,10 @@ impl Error for DiscordSetError {}
 
 #[async_trait]
 impl StorageBackend for DiscordStorage {
-    async fn load_roles(&self, guild: GuildId) -> Result<Vec<WereWolfRole>, Box<dyn Error + Send>> {
+    async fn load_roles(
+        &self,
+        guild: GuildId,
+    ) -> Result<Vec<WereWolfRoleConfig>, Box<dyn Error + Send>> {
         let channel_id = match self.obtain_settings_channel(guild).await {
             Ok(c) => c,
             Err(e) => {
@@ -131,32 +179,31 @@ impl StorageBackend for DiscordStorage {
             }
         };
 
-        let raw_messages_iter = channel_id.messages_iter(self.http.as_ref()).boxed();
-
         let current_user = match self.http.get_current_user().await {
             Ok(u) => u,
             Err(e) => return Err(Box::new(DiscordLoadError::SerenityError(e))),
         };
 
-        let message_iter = raw_messages_iter
-            .filter_map(|raw_message| {
-                ready(match raw_message {
-                    Ok(m) => Some(m),
+        let message_iter = self
+            .settings_message_iter(channel_id, current_user.id)
+            .await;
+
+        let role_config_iter = message_iter
+            .map(|msg| serde_json::from_str::<WereWolfRoleConfig>(&msg.content))
+            .filter_map(|p_res| async move {
+                match p_res {
+                    Ok(v) => Some(v),
                     Err(_) => None,
-                })
-            })
-            .filter(|m| ready(m.author.id == current_user.id));
+                }
+            });
 
-        // TODO
-        println!("Parse all the Settings messages and turn them intor their correct Roles");
-
-        Ok(Vec::new())
+        Ok(role_config_iter.collect().await)
     }
 
     async fn set_role(
         &self,
         guild: GuildId,
-        role: WereWolfRole,
+        role: WereWolfRoleConfig,
     ) -> Result<(), Box<dyn Error + Send>> {
         let channel_id = match self.obtain_settings_channel(guild).await {
             Ok(id) => id,
@@ -166,8 +213,64 @@ impl StorageBackend for DiscordStorage {
         };
 
         // TODO
-        println!("Save the Role in the Chat");
+        // Check if the Role already exists and then only update it otherwise continue with
+        // the current Function and create a new Entry for it
+
+        let serialized = match serde_json::to_string(&role) {
+            Ok(s) => s,
+            Err(e) => {
+                todo!("Handle Serialize failure");
+            }
+        };
+
+        if let Err(e) = channel_id
+            .send_message(self.http.as_ref(), |m| m.content(serialized))
+            .await
+        {
+            todo!("Handle Error sending Config to channel");
+        }
 
         Ok(())
+    }
+
+    async fn remove_role(
+        &self,
+        guild: GuildId,
+        role_name: &str,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        tracing::debug!("Remove Role: {:?}", role_name);
+
+        // TODO
+        let channel_id = match self.obtain_settings_channel(guild).await {
+            Ok(id) => id,
+            Err(e) => {
+                todo!("Could not obtain Settings Channel for Guild");
+            }
+        };
+
+        let current_user = match self.http.get_current_user().await {
+            Ok(u) => u,
+            Err(e) => return Err(Box::new(DiscordLoadError::SerenityError(e))),
+        };
+
+        let role_msg_id = match self
+            .find_role_message(channel_id, current_user.id, role_name)
+            .await
+        {
+            Ok(id) => id,
+            Err(e) => {
+                todo!("Could not find Role Message");
+            }
+        };
+
+        match channel_id
+            .delete_message(self.http.as_ref(), role_msg_id)
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                todo!("Handle delete Error")
+            }
+        }
     }
 }

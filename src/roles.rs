@@ -1,5 +1,6 @@
 use std::fmt::Display;
 
+use serde::{Deserialize, Serialize};
 use serenity::model::channel::{Message, ReactionType};
 
 mod cfg_reactions;
@@ -23,6 +24,47 @@ pub async fn cfg_role_msg_reactions(
         if let Err(e) = message.react(ctx.get_http(), reaction).await {
             tracing::error!("Adding Reaction: {:?}", e);
         }
+    }
+}
+
+/// The Config for a Custom Werewolf Role
+#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+pub struct WereWolfRoleConfig {
+    /// The Name of the Role used for Displaying it as well as for the Channel names
+    name: String,
+    /// The Emoji used to select the Role itself when creating the Round and the like
+    emoji: String,
+    /// Whether or not this Role can be assigned to mutliple Players in a single Round, notable
+    /// examples of this would be the "Werewolf" Role itself
+    mutli_player: bool,
+    /// Whether or not this Role "masks" another Role, meaning that it also needs one more Role
+    /// which will also be assigned to the Player and will be used by the Player at some Point in
+    /// the Game
+    masks_role: bool,
+}
+
+impl Display for WereWolfRoleConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}({}) - Multiple Players: {} - Contains another Role: {}",
+            self.name, self.emoji, self.mutli_player, self.masks_role
+        )
+    }
+}
+
+impl WereWolfRoleConfig {
+    pub fn new(name: String, emoji: String, mutli_player: bool, masks_role: bool) -> Self {
+        Self {
+            name,
+            emoji,
+            mutli_player,
+            masks_role,
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        &self.name
     }
 }
 
