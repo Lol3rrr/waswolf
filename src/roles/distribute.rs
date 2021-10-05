@@ -1,54 +1,26 @@
 use std::collections::BTreeMap;
 
-use rand::Rng;
+use rand::{thread_rng, Rng};
 use serenity::model::id::UserId;
 
-use super::WereWolfRole;
-
-fn populate_nested_roles<R>(mut roles: Vec<WereWolfRole>, rng: &mut R) -> Vec<WereWolfRole>
-where
-    R: Rng,
-{
-    loop {
-        let index_result = roles
-            .iter()
-            .enumerate()
-            .find(|(_, tmp_r)| tmp_r.needs_other_role());
-
-        let index = match index_result {
-            Some((i, _)) => i,
-            None => break,
-        };
-
-        let tmp_role = roles.remove(index);
-
-        let other_role_index: usize = rng.gen::<usize>() % roles.len();
-        let other_role = roles.remove(other_role_index);
-
-        let new_role = match tmp_role {
-            WereWolfRole::Trunkenbold(_) => WereWolfRole::Trunkenbold(Some(Box::new(other_role))),
-            _ => panic!("Unexpected Nested-Role"),
-        };
-
-        roles.push(new_role);
-    }
-
-    roles
-}
+use super::{WereWolfRoleConfig, WereWolfRoleInstance};
 
 /// This will actually distribute the Roles among the Players
 fn distribute<R>(
-    participants: Vec<UserId>,
-    roles: BTreeMap<WereWolfRole, usize>,
+    mut participants: Vec<UserId>,
+    roles: BTreeMap<WereWolfRoleConfig, usize>,
     rng: &mut R,
-) -> Result<BTreeMap<UserId, WereWolfRole>, ()>
+) -> Result<BTreeMap<UserId, WereWolfRoleInstance>, ()>
 where
     R: Rng,
 {
-    // Turn the Map of Roles into a list of all Roles
-    let roles = {
+    let mut nested_roles = {
         let mut tmp = Vec::new();
-        for (role, count) in roles {
+        for (role, count) in roles
+            .iter()
+            .filter(|(r, _)| r.masks_role())
+            .map(|(r, c)| (r, *c))
+        {
             for _ in 0..count {
                 tmp.push(role.clone());
             }
@@ -56,21 +28,48 @@ where
         tmp
     };
 
-    // Update the Role-List to accomodate Roles that will turn into another one
-    // while playing
-    let mut roles = populate_nested_roles(roles, rng);
+    let mut non_nested_roles = {
+        let mut tmp = Vec::new();
+        for (role, count) in roles
+            .iter()
+            .filter(|(r, _)| !r.masks_role())
+            .map(|(r, c)| (r, *c))
+        {
+            for _ in 0..count {
+                tmp.push(role.clone());
+            }
+        }
+        tmp
+    };
 
-    if roles.len() != participants.len() {
-        tracing::error!("Mismatched User-Role Count");
+    let final_role_count = non_nested_roles.len();
+    if final_role_count != participants.len() {
+        tracing::error!(
+            "Mismatched User to Roles Count, final Role count: {} vs. player count: {}",
+            final_role_count,
+            participants.len()
+        );
         return Err(());
     }
 
     let mut result = BTreeMap::new();
-    for user in participants {
-        let role_index = rng.gen::<usize>() % roles.len();
-        let role = roles.remove(role_index);
+    for nested_roles_remaining in nested_roles.len()..0 {
+        let index = rng.gen_range(0..nested_roles_remaining);
+        let nested_role = nested_roles.remove(index);
 
-        result.insert(user, role);
+        let user = participants.pop().unwrap();
+        let instance = nested_role.to_instance(&mut non_nested_roles, rng).unwrap();
+
+        result.insert(user, instance);
+    }
+    for r_remaining in non_nested_roles.len()..0 {
+        let index = rng.gen_range(0..r_remaining);
+        let role = non_nested_roles.remove(index);
+
+        let user = participants.pop().unwrap();
+        let instance = role.to_instance(&mut non_nested_roles, rng).unwrap();
+
+        result.insert(user, instance);
     }
 
     Ok(result)
@@ -79,8 +78,8 @@ where
 /// This will distribute the given Roles to the Players
 pub fn distribute_roles(
     participants: Vec<UserId>,
-    roles: BTreeMap<WereWolfRole, usize>,
-) -> Result<BTreeMap<UserId, WereWolfRole>, ()> {
+    roles: BTreeMap<WereWolfRoleConfig, usize>,
+) -> Result<BTreeMap<UserId, WereWolfRoleInstance>, ()> {
     let mut rng = rand::thread_rng();
 
     distribute(participants, roles, &mut rng)

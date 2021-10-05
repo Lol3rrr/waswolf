@@ -9,7 +9,7 @@ use serenity::{
     },
 };
 
-use crate::roles::WereWolfRole;
+use crate::roles::WereWolfRoleConfig;
 
 use super::BotContext;
 
@@ -181,7 +181,7 @@ where
 }
 
 pub async fn setup_role_channels(
-    roles: impl Iterator<Item = &WereWolfRole>,
+    roles: impl Iterator<Item = &WereWolfRoleConfig>,
     default_permissions: Vec<PermissionOverwrite>,
     guild: GuildId,
     guild_channel: &HashMap<ChannelId, GuildChannel>,
@@ -192,7 +192,7 @@ pub async fn setup_role_channels(
     let mut role_channel: BTreeMap<String, ChannelId> = BTreeMap::new();
 
     for role in roles {
-        let channel_name = format!("{}", role).to_lowercase();
+        let channel_name = role.name().to_lowercase();
 
         let channel_id = setup_channel(
             &channel_name,
@@ -205,7 +205,7 @@ pub async fn setup_role_channels(
         )
         .await?;
 
-        role_channel.insert(format!("{}", role), channel_id);
+        role_channel.insert(role.name().to_owned(), channel_id);
     }
 
     Ok(role_channel)

@@ -1,6 +1,6 @@
 use crate::Reactions;
 
-use super::WereWolfRole;
+use super::{WereWolfRole, WereWolfRoleConfig};
 
 const MAX_REACTIONS: usize = 17;
 
@@ -13,7 +13,7 @@ fn is_last_page(role_count: usize, page: usize) -> bool {
 }
 
 /// Generates the list of reactions for the given List of Roles and the correct Page
-pub fn reactions(roles: &[WereWolfRole], page: usize) -> Vec<Reactions> {
+pub fn reactions(roles: &[WereWolfRoleConfig], page: usize) -> Vec<Reactions> {
     let mut result = Vec::new();
 
     // If it is not the first Page, we first add the PreviousPage Reaction as all
@@ -30,7 +30,7 @@ pub fn reactions(roles: &[WereWolfRole], page: usize) -> Vec<Reactions> {
             Some(r) => r,
             None => break,
         };
-        result.push(Reactions::Custom(role.to_emoji().to_string()));
+        result.push(Reactions::Custom(role.emoji().to_string()));
     }
 
     // If it is not the last page, we need to add a button to navigate to the next page

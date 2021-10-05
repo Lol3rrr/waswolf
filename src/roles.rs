@@ -1,5 +1,6 @@
 use std::fmt::Display;
 
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use serenity::model::channel::{Message, ReactionType};
 
@@ -16,7 +17,7 @@ use crate::rounds::BotContext;
 pub async fn cfg_role_msg_reactions(
     message: &Message,
     ctx: &dyn BotContext,
-    roles: &[WereWolfRole],
+    roles: &[WereWolfRoleConfig],
     page: usize,
 ) {
     let reactions = cfg_reactions::reactions(roles, page);
@@ -28,7 +29,7 @@ pub async fn cfg_role_msg_reactions(
 }
 
 /// The Config for a Custom Werewolf Role
-#[derive(Debug, PartialEq, Clone, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct WereWolfRoleConfig {
     /// The Name of the Role used for Displaying it as well as for the Channel names
     name: String,
@@ -53,6 +54,17 @@ impl Display for WereWolfRoleConfig {
     }
 }
 
+impl PartialOrd for WereWolfRoleConfig {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.name.partial_cmp(&other.name)
+    }
+}
+impl Ord for WereWolfRoleConfig {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.name.cmp(&other.name)
+    }
+}
+
 impl WereWolfRoleConfig {
     pub fn new(name: String, emoji: String, mutli_player: bool, masks_role: bool) -> Self {
         Self {
@@ -69,6 +81,61 @@ impl WereWolfRoleConfig {
 
     pub fn emoji(&self) -> &str {
         &self.emoji
+    }
+
+    pub fn multi_player(&self) -> bool {
+        self.mutli_player
+    }
+
+    pub fn masks_role(&self) -> bool {
+        self.masks_role
+    }
+
+    pub fn to_instance<R>(
+        &self,
+        non_nested_roles: &mut Vec<WereWolfRoleConfig>,
+        rng: &mut R,
+    ) -> Option<WereWolfRoleInstance>
+    where
+        R: Rng,
+    {
+        if !self.masks_role {
+            return Some(WereWolfRoleInstance {
+                name: self.name.clone(),
+                masked_role: None,
+            });
+        }
+
+        if non_nested_roles.len() == 0 {
+            return None;
+        }
+        let index: usize = rng.gen_range(0..non_nested_roles.len());
+
+        let other_role = non_nested_roles.remove(index);
+        let other_instance = other_role.to_instance(non_nested_roles, rng).unwrap();
+
+        Some(WereWolfRoleInstance {
+            name: self.name.clone(),
+            masked_role: Some(Box::new(other_instance)),
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WereWolfRoleInstance {
+    name: String,
+    masked_role: Option<Box<Self>>,
+}
+
+impl WereWolfRoleInstance {
+    // TODO
+    // There may be certain Roles that also require access to other Channels to properly
+    // interact with them as well, however there is currently no way to configure this
+    pub fn channels(&self) -> Vec<String> {
+        match &self.masked_role {
+            Some(other) => vec![self.name.clone(), other.name.clone()],
+            None => vec![self.name.clone()],
+        }
     }
 }
 

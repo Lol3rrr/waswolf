@@ -7,7 +7,7 @@ use serenity::model::{
 };
 
 use crate::{
-    roles::{self, WereWolfRole},
+    roles::{self, WereWolfRole, WereWolfRoleConfig, WereWolfRoleInstance},
     rounds::BotContext,
 };
 
@@ -64,7 +64,7 @@ pub async fn start(
     ctx: &dyn BotContext,
 ) -> Result<
     (
-        BTreeMap<UserId, WereWolfRole>,
+        BTreeMap<UserId, WereWolfRoleInstance>,
         ChannelId,
         BTreeMap<String, ChannelId>,
     ),

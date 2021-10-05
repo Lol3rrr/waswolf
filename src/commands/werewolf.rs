@@ -1,11 +1,24 @@
 use serenity::{
-    client::Context, framework::standard::CommandResult, http::CacheHttp, model::channel::Message,
+    client::Context,
+    framework::standard::CommandResult,
+    http::CacheHttp,
+    model::{channel::Message, id::GuildId},
     prelude::Mutex,
 };
 
-use crate::{rounds::Round, util, Reactions, Rounds};
+use crate::{get_storage, roles::WereWolfRoleConfig, rounds::Round, util, Reactions, Rounds};
 
 const MOD_ROLE_NAME: &str = "Game Master";
+
+async fn get_role_configs(
+    ctx: &Context,
+    guild_id: GuildId,
+) -> Result<Vec<WereWolfRoleConfig>, Box<dyn std::error::Error + Send>> {
+    let data = ctx.data.read().await;
+    let storage = get_storage(&data);
+
+    storage.backend().load_roles(guild_id).await
+}
 
 #[tracing::instrument(skip(ctx, msg))]
 pub async fn werewolf(ctx: &Context, msg: &Message) -> CommandResult {
@@ -16,6 +29,16 @@ pub async fn werewolf(ctx: &Context, msg: &Message) -> CommandResult {
         None => return Ok(()),
     };
     let channel_id = msg.channel_id;
+
+    let role_configs = match get_role_configs(ctx, guild_id).await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!("Loading Roles: {:?}", e);
+            util::msgs::send_content(channel_id, ctx.http(), "Could not load Roles").await;
+
+            return Ok(());
+        }
+    };
 
     let mut data = ctx.data.write().await;
     let rounds = data
@@ -83,7 +106,7 @@ pub async fn werewolf(ctx: &Context, msg: &Message) -> CommandResult {
 
     rounds.insert(
         guild_id,
-        Mutex::new(Round::new(mods, msg_id, result.channel_id, guild_id).await),
+        Mutex::new(Round::new(mods, msg_id, result.channel_id, guild_id, role_configs).await),
     );
 
     tracing::debug!("Started new Round");

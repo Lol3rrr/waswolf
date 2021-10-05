@@ -13,7 +13,7 @@ use serenity::{
 };
 
 use crate::{
-    roles::{self, WereWolfRole},
+    roles::{self, WereWolfRoleConfig},
     util, Reactions, RoleCount,
 };
 
@@ -37,6 +37,8 @@ pub struct RoundState<S> {
     channel: ChannelId,
     /// The GuildID for the Round
     guild: GuildId,
+    /// The possible Roles that could be configured for the Round
+    role_configs: Vec<WereWolfRoleConfig>,
     /// The Current State of the Round
     state: S,
 }
@@ -50,6 +52,7 @@ impl<S> RoundState<S> {
         message: MessageId,
         channel: ChannelId,
         guild: GuildId,
+        role_configs: Vec<WereWolfRoleConfig>,
         state: S,
     ) -> Self {
         Self {
@@ -57,6 +60,7 @@ impl<S> RoundState<S> {
             message,
             channel,
             guild,
+            role_configs,
             state,
         }
     }
@@ -67,8 +71,20 @@ impl<S> RoundState<S> {
             message: self.message,
             channel: self.channel,
             guild: self.guild,
+            role_configs: self.role_configs,
             state: n_state,
         }
+    }
+
+    pub fn role_configs(&self) -> &[WereWolfRoleConfig] {
+        self.role_configs.as_ref()
+    }
+
+    pub fn find_role_config(&self, emoji: &str) -> Option<WereWolfRoleConfig> {
+        self.role_configs
+            .iter()
+            .find(|r| r.emoji() == emoji)
+            .map(|r| r.clone())
     }
 
     async fn get_msg(&self, ctx: &dyn BotContext) -> Result<Message, serenity::Error> {
@@ -100,13 +116,10 @@ impl<S> RoundState<S> {
 
     /// Loads the ID of the Role for Dead players or creates it if it does not
     /// currently exist
-    #[tracing::instrument(skip(self, ctx))]
     async fn dead_role(&self, ctx: &dyn BotContext) -> Result<RoleId, serenity::Error> {
         let id = match util::roles::find_role(DEAD_ROLE_NAME, self.guild, ctx.get_http()).await {
             Ok(id) => id,
             Err(_) => {
-                tracing::debug!("Creating Role for Dead-Players: {:?}", DEAD_ROLE_NAME);
-
                 let nrole = self
                     .guild
                     .create_role(ctx.get_http(), |r| r.name(DEAD_ROLE_NAME).position(0))
@@ -120,7 +133,6 @@ impl<S> RoundState<S> {
     }
     /// Loads the ID of the Role for Dead players or creates it if it does not
     /// currently exist
-    #[tracing::instrument(skip(self, ctx))]
     async fn everyone_role(&self, ctx: &dyn BotContext) -> Result<RoleId, serenity::Error> {
         let g_roles = self.guild.roles(ctx.get_http()).await?;
 
@@ -140,12 +152,13 @@ impl RoundState<RegisterUsers> {
         message: MessageId,
         channel: ChannelId,
         guild: GuildId,
+        role_configs: Vec<WereWolfRoleConfig>,
     ) -> Self {
         let state = RegisterUsers {
             participants: Vec::new(),
         };
 
-        Self::new_raw(mods, message, channel, guild, state).await
+        Self::new_raw(mods, message, channel, guild, role_configs, state).await
     }
 
     /// Adds a new Player to the Round
@@ -176,15 +189,15 @@ impl RoundState<RegisterUsers> {
 
 impl RoundState<RegisterRoles> {
     pub fn needs_role_count_config(&self) -> bool {
-        self.state.roles.iter().any(|r| r.needs_multiple())
+        self.state.roles.iter().any(|r| r.multi_player())
     }
 
     async fn update_page(&mut self, ctx: &Context) -> Result<(), serenity::Error> {
         let cfg_message = self.get_msg(ctx).await?;
         cfg_message.delete_reactions(&ctx.http).await?;
 
-        let w_roles = WereWolfRole::all_roles();
-        roles::cfg_role_msg_reactions(&cfg_message, ctx, &w_roles, self.state.role_page).await;
+        roles::cfg_role_msg_reactions(&cfg_message, ctx, &self.role_configs, self.state.role_page)
+            .await;
         Ok(())
     }
     pub async fn next_page(&mut self, ctx: &Context) -> Result<(), serenity::Error> {
@@ -196,10 +209,10 @@ impl RoundState<RegisterRoles> {
         self.update_page(ctx).await
     }
 
-    pub fn add_role(&mut self, role: WereWolfRole) {
+    pub fn add_role(&mut self, role: WereWolfRoleConfig) {
         self.state.roles.push(role);
     }
-    pub fn remove_role(&mut self, role: WereWolfRole) {
+    pub fn remove_role(&mut self, role: WereWolfRoleConfig) {
         let index_result = self
             .state
             .roles
@@ -303,8 +316,7 @@ impl TryTransition<RoundState<RegisterUsers>> for RoundState<RegisterRoles> {
             source.mods.len()
         );
 
-        let w_roles = WereWolfRole::all_roles();
-        let roles_msg = roles::get_roles_msg(&w_roles);
+        let roles_msg = roles::get_roles_msg(&source.role_configs);
 
         let cfg_message = source
             .update_msg(context.ctx, &roles_msg, &[])
@@ -312,7 +324,7 @@ impl TryTransition<RoundState<RegisterUsers>> for RoundState<RegisterRoles> {
             .map_err(TransitionError::new)?;
 
         let page = 0;
-        roles::cfg_role_msg_reactions(&cfg_message, context.ctx, &w_roles, page).await;
+        roles::cfg_role_msg_reactions(&cfg_message, context.ctx, &source.role_configs, page).await;
 
         let nstate = RegisterRoles {
             participants: source.state.participants.clone(),
@@ -337,10 +349,10 @@ impl TryTransition<RoundState<RegisterRoles>> for RoundState<RoleCounts> {
         let role_counts = data.get::<RoleCount>().expect("The general Datastructure to store the Messages for Role-Counts should always be registered");
         let mut role_counts = role_counts.lock().await;
 
-        for role in source.state.roles.iter().filter(|r| r.needs_multiple()) {
+        for role in source.state.roles.iter().filter(|r| r.multi_player()) {
             let role_msg = format!(
                 "Reply with the Number of Players that should get the {}-Role",
-                role
+                role.name()
             );
             let role_q_msg = source
                 .channel

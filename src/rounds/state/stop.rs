@@ -5,7 +5,7 @@ use serenity::model::{
     id::{ChannelId, GuildId, RoleId, UserId},
 };
 
-use crate::roles::WereWolfRole;
+use crate::roles::{WereWolfRole, WereWolfRoleInstance};
 
 use super::{channels, BotContext};
 
@@ -19,7 +19,7 @@ pub async fn stop<'pi, PI, PIT>(
     participants: PIT,
     channels: &BTreeMap<String, ChannelId>,
 ) where
-    PI: Iterator<Item = (&'pi UserId, &'pi WereWolfRole)>,
+    PI: Iterator<Item = (&'pi UserId, &'pi WereWolfRoleInstance)>,
     PIT: Fn() -> PI,
 {
     let guild_channel = match guild.channels(ctx.get_http()).await {
