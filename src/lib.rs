@@ -394,19 +394,63 @@ async fn list_roles(ctx: &Context, msg: &Message, _args: Args) -> CommandResult 
     Ok(())
 }
 
+fn parse_bool(raw: &str) -> Option<bool> {
+    match raw {
+        "true" | "yes" | "y" => Some(true),
+        "false" | "no" | "n" => Some(false),
+        _ => None,
+    }
+}
+
 #[command]
 #[aliases("add-role")]
-async fn add_role(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
+async fn add_role(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
     tracing::debug!("Received add-role Command");
 
     let channel_id = msg.channel_id;
     let guild_id = msg.guild_id.unwrap();
 
-    let name = "test-role".to_string();
-    let emoji = "test-emoji".to_string();
-    let mutli_player = false;
-    let masks_role = false;
-    let new_config = WereWolfRoleConfig::new(name, emoji, mutli_player, masks_role);
+    let mut args_iter = args.iter::<String>();
+
+    let name = match args_iter.next() {
+        Some(n) => n.unwrap(),
+        None => {
+            todo!("Missing Name for Role")
+        }
+    };
+
+    let emoji = match args_iter.next() {
+        Some(e) => e.unwrap(),
+        None => {
+            todo!("Missing Emoji for Role")
+        }
+    };
+
+    let multi_player = match args_iter.next() {
+        Some(raw_m) => match parse_bool(&raw_m.unwrap().to_lowercase()) {
+            Some(v) => v,
+            None => {
+                todo!("Invalid Multi-Player for Role")
+            }
+        },
+        None => {
+            todo!("Missing Multi-Player");
+        }
+    };
+
+    let masks_role = match args_iter.next() {
+        Some(raw_m) => match parse_bool(&raw_m.unwrap().to_lowercase()) {
+            Some(v) => v,
+            None => {
+                todo!("Invalid Masks-Role for Role")
+            }
+        },
+        None => {
+            todo!("Missing Masks-Role");
+        }
+    };
+
+    let new_config = WereWolfRoleConfig::new(name, emoji, multi_player, masks_role);
 
     let data = ctx.data.read().await;
     let storage = get_storage(&data);
