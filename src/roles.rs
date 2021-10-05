@@ -66,6 +66,10 @@ impl WereWolfRoleConfig {
     pub fn name(&self) -> &str {
         &self.name
     }
+
+    pub fn emoji(&self) -> &str {
+        &self.emoji
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
