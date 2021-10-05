@@ -5,6 +5,8 @@ use serenity::{
 
 use crate::{rounds::Round, util, Reactions, Rounds};
 
+const MOD_ROLE_NAME: &str = "Game Master";
+
 #[tracing::instrument(skip(ctx, msg))]
 pub async fn werewolf(ctx: &Context, msg: &Message) -> CommandResult {
     tracing::debug!("Received werewolf command");
@@ -21,34 +23,33 @@ pub async fn werewolf(ctx: &Context, msg: &Message) -> CommandResult {
         .expect("The shared Rounds-Datastructure should always exist in a running Instance");
     if rounds.get(&guild_id).is_some() {
         tracing::error!("There is already a Round running on the Guild");
-        if let Err(e) = channel_id
-            .say(
-                &ctx.http,
-                "There exists already a running Round in this Guild",
-            )
-            .await
-        {
-            tracing::error!("Sending Error-Message {:?}", e);
-        }
+
+        util::msgs::send_content(
+            channel_id,
+            ctx.http(),
+            "There is already a running Round in this Guild",
+        )
+        .await;
 
         return Ok(());
     }
 
-    tracing::info!("Starting new Round");
+    tracing::debug!("Starting new Round");
 
-    const MOD_ROLE_NAME: &str = "Game Master";
     let mod_role = match util::roles::find_role(MOD_ROLE_NAME, guild_id, ctx.http()).await {
         Ok(r) => r,
         Err(util::roles::FindRoleError::NotFound) => {
             tracing::error!("'Game Master'-Role does not exist on the Guild");
-            if let Err(e) = channel_id
-                .send_message(ctx.http(), |m| {
-                    m.content("Could not start a new Round as it could not find a Role with the Name 'Game Master'")
-                })
-                .await
-            {
-                tracing::error!("Sending Discord error message: {:?}", e);
-            }
+
+            util::msgs::send_content(
+                channel_id,
+                ctx.http(),
+                &format!(
+                    "Could not start a new Round as it could not find a Role with the Name '{}'",
+                    MOD_ROLE_NAME
+                ),
+            )
+            .await;
 
             return Ok(());
         }
@@ -84,6 +85,8 @@ pub async fn werewolf(ctx: &Context, msg: &Message) -> CommandResult {
         guild_id,
         Mutex::new(Round::new(mods, msg_id, result.channel_id, guild_id).await),
     );
+
+    tracing::debug!("Started new Round");
 
     Ok(())
 }

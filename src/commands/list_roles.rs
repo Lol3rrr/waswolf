@@ -2,7 +2,21 @@ use serenity::{
     client::Context, framework::standard::CommandResult, http::CacheHttp, model::channel::Message,
 };
 
-use crate::get_storage;
+use crate::{get_storage, roles::WereWolfRoleConfig, util};
+
+fn role_list_msg(roles: &[WereWolfRoleConfig]) -> String {
+    if roles.len() == 0 {
+        return "No Roles configured".to_owned();
+    }
+
+    let mut result = "Roles\n\n".to_owned();
+
+    for role in roles.iter() {
+        result.push_str(&format!("* {}\n", role));
+    }
+
+    result
+}
 
 #[tracing::instrument(skip(ctx, msg))]
 pub async fn list_roles(ctx: &Context, msg: &Message) -> CommandResult {
@@ -19,28 +33,13 @@ pub async fn list_roles(ctx: &Context, msg: &Message) -> CommandResult {
         Ok(r) => r,
         Err(e) => {
             tracing::error!("Loading Roles: {:?}", e);
-            if let Err(e) = channel_id
-                .send_message(ctx.http(), |m| m.content("Could not load Roles"))
-                .await
-            {
-                tracing::error!("Sending Error Message: {:?}", e);
-            }
+            util::msgs::send_content(channel_id, ctx.http(), "Could not load Roles").await;
 
             return Ok(());
         }
     };
 
-    let content = if roles.len() == 0 {
-        "No Roles configured".to_owned()
-    } else {
-        let mut tmp = "Roles \n\n".to_owned();
-
-        for role in roles {
-            tmp.push_str(&format!("* {}\n", role));
-        }
-
-        tmp
-    };
+    let content = role_list_msg(&roles);
 
     match channel_id
         .send_message(ctx.http(), |m| m.content(content))
