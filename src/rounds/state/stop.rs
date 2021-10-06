@@ -5,7 +5,7 @@ use serenity::model::{
     id::{ChannelId, GuildId, RoleId, UserId},
 };
 
-use crate::roles::{WereWolfRole, WereWolfRoleInstance};
+use crate::roles::WereWolfRoleInstance;
 
 use super::{channels, BotContext};
 

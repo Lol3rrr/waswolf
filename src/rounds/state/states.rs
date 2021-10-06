@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use serenity::model::id::{ChannelId, MessageId, UserId};
 
-use crate::roles::{WereWolfRole, WereWolfRoleConfig, WereWolfRoleInstance};
+use crate::roles::{WereWolfRoleConfig, WereWolfRoleInstance};
 
 #[derive(Debug, Clone)]
 pub struct RegisterUsers {

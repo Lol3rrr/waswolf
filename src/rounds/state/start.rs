@@ -7,7 +7,7 @@ use serenity::model::{
 };
 
 use crate::{
-    roles::{self, WereWolfRole, WereWolfRoleConfig, WereWolfRoleInstance},
+    roles::{self, WereWolfRoleInstance},
     rounds::BotContext,
 };
 
