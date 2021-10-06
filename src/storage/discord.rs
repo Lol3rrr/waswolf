@@ -8,7 +8,6 @@ use serenity::{
         channel::{ChannelType, Message},
         id::{ChannelId, GuildId, MessageId, UserId},
     },
-    FutureExt,
 };
 
 use crate::roles::WereWolfRoleConfig;
@@ -115,9 +114,7 @@ impl DiscordStorage {
         channel_id: ChannelId,
         bot_id: UserId,
         role_name: &str,
-    ) -> Result<MessageId, ()> {
-        // TODO
-
+    ) -> Option<MessageId> {
         let message_iter = self.settings_message_iter(channel_id, bot_id).await;
 
         let mut result_iter = message_iter
@@ -129,59 +126,20 @@ impl DiscordStorage {
             .map(|(msg, tmp)| (msg, tmp.unwrap()))
             .filter(|(_, config)| ready(config.name() == role_name));
 
-        match result_iter.next().await {
-            Some((c, _)) => Ok(c.id),
-            None => {
-                todo!("Handle non existing Role Search")
-            }
-        }
+        result_iter.next().await.map(|(c, _)| c.id)
     }
-}
 
-#[derive(Debug)]
-pub enum DiscordLoadError {
-    SerenityError(serenity::Error),
-}
-
-impl Display for DiscordLoadError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::SerenityError(e) => write!(f, "Serentiy ({})", e),
-        }
-    }
-}
-impl Error for DiscordLoadError {}
-
-#[derive(Debug)]
-pub enum DiscordSetError {
-    SerenityError(serenity::Error),
-}
-
-impl Display for DiscordSetError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::SerenityError(e) => write!(f, "Serenity ({})", e),
-        }
-    }
-}
-impl Error for DiscordSetError {}
-
-#[async_trait]
-impl StorageBackend for DiscordStorage {
-    async fn load_roles(
-        &self,
-        guild: GuildId,
-    ) -> Result<Vec<WereWolfRoleConfig>, Box<dyn Error + Send>> {
+    async fn load_roles(&self, guild: GuildId) -> Result<Vec<WereWolfRoleConfig>, DiscordError> {
         let channel_id = match self.obtain_settings_channel(guild).await {
             Ok(c) => c,
             Err(e) => {
-                todo!("Could not obtain Setttings Channel");
+                return Err(DiscordError::ObtainSettingsChannel);
             }
         };
 
         let current_user = match self.http.get_current_user().await {
             Ok(u) => u,
-            Err(e) => return Err(Box::new(DiscordLoadError::SerenityError(e))),
+            Err(e) => return Err(DiscordError::SerenityError(e)),
         };
 
         let message_iter = self
@@ -200,26 +158,18 @@ impl StorageBackend for DiscordStorage {
         Ok(role_config_iter.collect().await)
     }
 
-    async fn set_role(
-        &self,
-        guild: GuildId,
-        role: WereWolfRoleConfig,
-    ) -> Result<(), Box<dyn Error + Send>> {
+    async fn set_role(&self, guild: GuildId, role: WereWolfRoleConfig) -> Result<(), DiscordError> {
         let channel_id = match self.obtain_settings_channel(guild).await {
             Ok(id) => id,
             Err(e) => {
-                todo!("Could not obtain Settings Channel for Guild");
+                return Err(DiscordError::ObtainSettingsChannel);
             }
         };
-
-        // TODO
-        // Check if the Role already exists and then only update it otherwise continue with
-        // the current Function and create a new Entry for it
 
         let serialized = match serde_json::to_string(&role) {
             Ok(s) => s,
             Err(e) => {
-                todo!("Handle Serialize failure");
+                return Err(DiscordError::Serde(e));
             }
         };
 
@@ -227,39 +177,32 @@ impl StorageBackend for DiscordStorage {
             .send_message(self.http.as_ref(), |m| m.content(serialized))
             .await
         {
-            todo!("Handle Error sending Config to channel");
+            return Err(DiscordError::SerenityError(e));
         }
 
         Ok(())
     }
 
-    async fn remove_role(
-        &self,
-        guild: GuildId,
-        role_name: &str,
-    ) -> Result<(), Box<dyn Error + Send>> {
-        tracing::debug!("Remove Role: {:?}", role_name);
-
-        // TODO
+    async fn remove_role(&self, guild: GuildId, role_name: &str) -> Result<(), DiscordError> {
         let channel_id = match self.obtain_settings_channel(guild).await {
             Ok(id) => id,
             Err(e) => {
-                todo!("Could not obtain Settings Channel for Guild");
+                return Err(DiscordError::ObtainSettingsChannel);
             }
         };
 
         let current_user = match self.http.get_current_user().await {
             Ok(u) => u,
-            Err(e) => return Err(Box::new(DiscordLoadError::SerenityError(e))),
+            Err(e) => return Err(DiscordError::SerenityError(e)),
         };
 
         let role_msg_id = match self
             .find_role_message(channel_id, current_user.id, role_name)
             .await
         {
-            Ok(id) => id,
-            Err(e) => {
-                todo!("Could not find Role Message");
+            Some(id) => id,
+            None => {
+                return Err(DiscordError::FindingRole);
             }
         };
 
@@ -269,8 +212,60 @@ impl StorageBackend for DiscordStorage {
         {
             Ok(_) => Ok(()),
             Err(e) => {
-                todo!("Handle delete Error")
+                return Err(DiscordError::SerenityError(e));
             }
         }
+    }
+}
+
+#[derive(Debug)]
+pub enum DiscordError {
+    ObtainSettingsChannel,
+    FindingRole,
+    Serde(serde_json::Error),
+    SerenityError(serenity::Error),
+}
+
+impl Display for DiscordError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ObtainSettingsChannel => write!(f, "ObtainSettingsChannel"),
+            Self::FindingRole => write!(f, "FindingRole"),
+            Self::Serde(e) => write!(f, "Serde ({})", e),
+            Self::SerenityError(e) => write!(f, "Serenity ({})", e),
+        }
+    }
+}
+impl Error for DiscordError {}
+
+#[async_trait]
+impl StorageBackend for DiscordStorage {
+    async fn load_roles(
+        &self,
+        guild: GuildId,
+    ) -> Result<Vec<WereWolfRoleConfig>, Box<dyn Error + Send>> {
+        self.load_roles(guild)
+            .await
+            .map_err(|e| Box::new(e) as Box<dyn Error + Send>)
+    }
+
+    async fn set_role(
+        &self,
+        guild: GuildId,
+        role: WereWolfRoleConfig,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        self.set_role(guild, role)
+            .await
+            .map_err(|e| Box::new(e) as Box<dyn Error + Send>)
+    }
+
+    async fn remove_role(
+        &self,
+        guild: GuildId,
+        role_name: &str,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        self.remove_role(guild, role_name)
+            .await
+            .map_err(|e| Box::new(e) as Box<dyn Error + Send>)
     }
 }
