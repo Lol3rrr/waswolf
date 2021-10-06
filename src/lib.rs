@@ -172,6 +172,7 @@ impl EventHandler for Handler {
         round.handle_remove_react(&ctx, removed_reaction).await;
     }
 
+    #[tracing::instrument(skip(self, ctx, new_message))]
     async fn message(&self, ctx: Context, new_message: Message) {
         let mut ref_message = match &new_message.referenced_message {
             Some(m) => m.clone(),
@@ -199,14 +200,7 @@ impl EventHandler for Handler {
         if let Err(e) = round.role_reply(self.id, &ctx, reply_id, new_message).await {
             tracing::error!("{:?}", e);
 
-            if let Err(e) = ref_message
-                .edit(&ctx.http, |edit| {
-                    edit.content("Error setting up the Moderator Channel")
-                })
-                .await
-            {
-                tracing::error!("Updating Message with Error: {:?}", e);
-            };
+            round.update_msg(&ctx, &format!("{}", e)).await;
 
             {
                 let mut data = ctx.data.write().await;

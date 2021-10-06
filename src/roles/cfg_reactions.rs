@@ -71,11 +71,7 @@ mod tests {
 
     #[test]
     fn first_page() {
-        let roles =
-            vec![
-                WereWolfRoleConfig::new("Werewolf".to_string(), ":)".to_string(), false, false);
-                30
-            ];
+        let roles = vec![WereWolfRoleConfig::new("Werewolf", ":)", false, false); 30];
         let page = 0;
 
         let result = reactions(&roles, page);
@@ -89,11 +85,7 @@ mod tests {
     }
     #[test]
     fn middle_page() {
-        let roles =
-            vec![
-                WereWolfRoleConfig::new("Werewolf".to_string(), ":)".to_string(), false, false);
-                50
-            ];
+        let roles = vec![WereWolfRoleConfig::new("Werewolf", ":)", false, false); 50];
         let page = 1;
 
         let result = reactions(&roles, page);
@@ -108,11 +100,7 @@ mod tests {
     }
     #[test]
     fn last_page() {
-        let roles =
-            vec![
-                WereWolfRoleConfig::new("Werewolf".to_string(), ":)".to_string(), false, false);
-                17 * 3
-            ];
+        let roles = vec![WereWolfRoleConfig::new("Werewolf", ":)", false, false); 17 * 3];
         let page = 2;
 
         let result = reactions(&roles, page);

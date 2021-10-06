@@ -76,10 +76,6 @@ impl<S> RoundState<S> {
         }
     }
 
-    pub fn role_configs(&self) -> &[WereWolfRoleConfig] {
-        self.role_configs.as_ref()
-    }
-
     pub fn find_role_config(&self, emoji: &str) -> Option<WereWolfRoleConfig> {
         self.role_configs
             .iter()

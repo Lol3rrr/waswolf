@@ -5,12 +5,24 @@ use serenity::model::id::UserId;
 
 use super::{WereWolfRoleConfig, WereWolfRoleInstance};
 
+#[derive(Debug)]
+pub enum DistributeError {
+    MismatchedCount {
+        available_roles: usize,
+        player_count: usize,
+    },
+    TooManyMaskedRoles {
+        masking_roles: usize,
+        normal_roles: usize,
+    },
+}
+
 /// This will actually distribute the Roles among the Players
 fn distribute<R>(
     mut participants: Vec<UserId>,
     roles: BTreeMap<WereWolfRoleConfig, usize>,
     rng: &mut R,
-) -> Result<BTreeMap<UserId, WereWolfRoleInstance>, ()>
+) -> Result<BTreeMap<UserId, WereWolfRoleInstance>, DistributeError>
 where
     R: Rng,
 {
@@ -42,14 +54,18 @@ where
         tmp
     };
 
-    let final_role_count = non_nested_roles.len();
-    if final_role_count != participants.len() {
-        tracing::error!(
-            "Mismatched User to Roles Count, final Role count: {} vs. player count: {}",
-            final_role_count,
-            participants.len()
-        );
-        return Err(());
+    if non_nested_roles.len() != participants.len() {
+        return Err(DistributeError::MismatchedCount {
+            available_roles: non_nested_roles.len(),
+            player_count: participants.len(),
+        });
+    }
+
+    if nested_roles.len() > non_nested_roles.len() {
+        return Err(DistributeError::TooManyMaskedRoles {
+            masking_roles: nested_roles.len(),
+            normal_roles: non_nested_roles.len(),
+        });
     }
 
     let mut result = BTreeMap::new();
@@ -79,7 +95,7 @@ where
 pub fn distribute_roles(
     participants: Vec<UserId>,
     roles: BTreeMap<WereWolfRoleConfig, usize>,
-) -> Result<BTreeMap<UserId, WereWolfRoleInstance>, ()> {
+) -> Result<BTreeMap<UserId, WereWolfRoleInstance>, DistributeError> {
     let mut rng = rand::thread_rng();
 
     distribute(participants, roles, &mut rng)

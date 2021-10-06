@@ -10,7 +10,7 @@ mod roles_msg;
 pub use roles_msg::get_roles_msg;
 
 mod distribute;
-pub use distribute::distribute_roles;
+pub use distribute::{distribute_roles, DistributeError};
 
 use crate::rounds::BotContext;
 
@@ -66,10 +66,14 @@ impl Ord for WereWolfRoleConfig {
 }
 
 impl WereWolfRoleConfig {
-    pub fn new(name: String, emoji: String, mutli_player: bool, masks_role: bool) -> Self {
+    pub fn new<N, E>(name: N, emoji: E, mutli_player: bool, masks_role: bool) -> Self
+    where
+        N: Into<String>,
+        E: Into<String>,
+    {
         Self {
-            name,
-            emoji,
+            name: name.into(),
+            emoji: emoji.into(),
             mutli_player,
             masks_role,
         }
