@@ -16,6 +16,26 @@ use super::StorageBackend;
 
 const SETTINGS_CHANNEL_NAME: &str = "W-Settings";
 
+#[derive(Debug)]
+pub enum DiscordError {
+    ObtainSettingsChannel,
+    FindingRole,
+    Serde(serde_json::Error),
+    SerenityError(serenity::Error),
+}
+
+impl Display for DiscordError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ObtainSettingsChannel => write!(f, "ObtainSettingsChannel"),
+            Self::FindingRole => write!(f, "FindingRole"),
+            Self::Serde(e) => write!(f, "Serde ({})", e),
+            Self::SerenityError(e) => write!(f, "Serenity ({})", e),
+        }
+    }
+}
+impl Error for DiscordError {}
+
 /// The Discord Storage Backend
 pub struct DiscordStorage {
     http: Arc<Http>,
@@ -78,18 +98,16 @@ impl DiscordStorage {
     /// This is used to obtain the ID of the Settings Channel, by either loading it when the
     /// Channel already exists on the Guild or by creating the Channel in case the Settings Channel
     /// could not be found
-    async fn obtain_settings_channel(&self, guild: GuildId) -> Result<ChannelId, ()> {
-        match self.get_settings_channel(guild).await {
-            Ok(id) => return Ok(id),
-            Err(_) => {}
-        };
+    async fn obtain_settings_channel(&self, guild: GuildId) -> Option<ChannelId> {
+        if let Ok(id) = self.get_settings_channel(guild).await {
+            return Some(id);
+        }
 
-        match self.create_settings_channel(guild).await {
-            Ok(id) => return Ok(id),
-            Err(_) => {}
-        };
+        if let Ok(id) = self.create_settings_channel(guild).await {
+            return Some(id);
+        }
 
-        Err(())
+        None
     }
 
     async fn settings_message_iter(
@@ -131,8 +149,8 @@ impl DiscordStorage {
 
     async fn load_roles(&self, guild: GuildId) -> Result<Vec<WereWolfRoleConfig>, DiscordError> {
         let channel_id = match self.obtain_settings_channel(guild).await {
-            Ok(c) => c,
-            Err(e) => {
+            Some(c) => c,
+            None => {
                 return Err(DiscordError::ObtainSettingsChannel);
             }
         };
@@ -160,8 +178,8 @@ impl DiscordStorage {
 
     async fn set_role(&self, guild: GuildId, role: WereWolfRoleConfig) -> Result<(), DiscordError> {
         let channel_id = match self.obtain_settings_channel(guild).await {
-            Ok(id) => id,
-            Err(e) => {
+            Some(id) => id,
+            None => {
                 return Err(DiscordError::ObtainSettingsChannel);
             }
         };
@@ -185,8 +203,8 @@ impl DiscordStorage {
 
     async fn remove_role(&self, guild: GuildId, role_name: &str) -> Result<(), DiscordError> {
         let channel_id = match self.obtain_settings_channel(guild).await {
-            Ok(id) => id,
-            Err(e) => {
+            Some(id) => id,
+            None => {
                 return Err(DiscordError::ObtainSettingsChannel);
             }
         };
@@ -211,32 +229,10 @@ impl DiscordStorage {
             .await
         {
             Ok(_) => Ok(()),
-            Err(e) => {
-                return Err(DiscordError::SerenityError(e));
-            }
+            Err(e) => Err(DiscordError::SerenityError(e)),
         }
     }
 }
-
-#[derive(Debug)]
-pub enum DiscordError {
-    ObtainSettingsChannel,
-    FindingRole,
-    Serde(serde_json::Error),
-    SerenityError(serenity::Error),
-}
-
-impl Display for DiscordError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ObtainSettingsChannel => write!(f, "ObtainSettingsChannel"),
-            Self::FindingRole => write!(f, "FindingRole"),
-            Self::Serde(e) => write!(f, "Serde ({})", e),
-            Self::SerenityError(e) => write!(f, "Serenity ({})", e),
-        }
-    }
-}
-impl Error for DiscordError {}
 
 #[async_trait]
 impl StorageBackend for DiscordStorage {

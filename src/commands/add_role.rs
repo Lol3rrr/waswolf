@@ -109,23 +109,20 @@ Got: '{}'
 
     let backend = storage.backend();
 
-    match backend.load_roles(guild_id).await {
-        Ok(r) => {
-            if r.iter().find(|c| c.name() == name.as_str()).is_some() {
-                let resp = format!("There already exists a Role with the Name: {}", name);
-                util::msgs::send_content(channel_id, ctx.http(), &resp).await;
+    if let Ok(r) = backend.load_roles(guild_id).await {
+        if r.iter().any(|c| c.name() == name.as_str()) {
+            let resp = format!("There already exists a Role with the Name: {}", name);
+            util::msgs::send_content(channel_id, ctx.http(), &resp).await;
 
-                return Ok(());
-            }
-            if r.iter().find(|c| c.emoji() == emoji.as_str()).is_some() {
-                let resp = format!("There already exists a Role with the Emoji: {}", emoji);
-                util::msgs::send_content(channel_id, ctx.http(), &resp).await;
-
-                return Ok(());
-            }
+            return Ok(());
         }
-        _ => {}
-    };
+        if r.iter().any(|c| c.emoji() == emoji.as_str()) {
+            let resp = format!("There already exists a Role with the Emoji: {}", emoji);
+            util::msgs::send_content(channel_id, ctx.http(), &resp).await;
+
+            return Ok(());
+        }
+    }
 
     let new_config = WereWolfRoleConfig::new(name, emoji, multi_player, masks_role, other_channels);
 

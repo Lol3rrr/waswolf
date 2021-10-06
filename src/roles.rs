@@ -123,7 +123,7 @@ impl WereWolfRoleConfig {
             ));
         }
 
-        if non_nested_roles.len() == 0 {
+        if non_nested_roles.is_empty() {
             return None;
         }
         let index: usize = rng.gen_range(0..non_nested_roles.len());

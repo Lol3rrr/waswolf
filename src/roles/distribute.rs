@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, ops::MulAssign};
+use std::collections::BTreeMap;
 
 use rand::Rng;
 use serenity::model::id::UserId;

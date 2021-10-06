@@ -80,7 +80,7 @@ impl<S> RoundState<S> {
         self.role_configs
             .iter()
             .find(|r| r.emoji() == emoji)
-            .map(|r| r.clone())
+            .cloned()
     }
 
     async fn get_msg(&self, ctx: &dyn BotContext) -> Result<Message, serenity::Error> {

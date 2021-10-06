@@ -98,7 +98,7 @@ pub async fn start(
         source.state.participants.clone(),
         source.state.roles.clone(),
     )
-    .map_err(|e| StartError::DistributingRoles(e))?;
+    .map_err(StartError::DistributingRoles)?;
 
     let guild_channel = source
         .guild

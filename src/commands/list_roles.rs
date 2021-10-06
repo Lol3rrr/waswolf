@@ -5,7 +5,7 @@ use serenity::{
 use crate::{get_storage, roles::WereWolfRoleConfig, util};
 
 fn role_list_msg(roles: &[WereWolfRoleConfig]) -> String {
-    if roles.len() == 0 {
+    if roles.is_empty() {
         return "No Roles configured".to_owned();
     }
 

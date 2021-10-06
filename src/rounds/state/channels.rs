@@ -205,7 +205,7 @@ pub async fn setup_role_channels(
                 guild_channel,
                 *category_id,
                 &default_permissions,
-                moderators.iter().map(|id| *id),
+                moderators.iter().copied(),
                 ctx,
             )
             .await?;
@@ -228,12 +228,12 @@ pub async fn setup_moderator_channel(
     moderators: &BTreeSet<UserId>,
 ) -> Result<ChannelId, SetupChannelError> {
     setup_channel(
-        &MOD_CHANNEL_NAME,
+        MOD_CHANNEL_NAME,
         &guild,
         guild_channel,
         *category_id,
         &default_permissions,
-        moderators.iter().map(|id| *id),
+        moderators.iter().copied(),
         ctx,
     )
     .await
