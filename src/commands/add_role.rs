@@ -10,12 +10,13 @@ use crate::{get_storage, parse_bool, roles::WereWolfRoleConfig, util};
 fn missing_part(missing_part: &str) -> String {
     format!("```
 Missing '{}'
-Format: 'add-role {{name}} {{emoji}} {{mutli-player}} {{masks role}}'
+Format: 'add-role {{name}} {{emoji}} {{mutli-player}} {{masks role}} {{extra Role Channels}}'
 Parts:
     * 'name': The Name of the new Role
     * 'emoji': The Emoji that will be used to select the Role
     * 'multi-player': Whether or not the Role can be assigned to multiple Players in the same round
     * 'masks role': Whether or not the Role 'hides' another Role at the beginning of the Round, like when a Player with this Role only gets their real Role later on
+    * 'extra Role Channels': A Comma seperated List of other Role-Chats that this Role should have access to
 ```", missing_part)
 }
 
@@ -98,6 +99,11 @@ Got: '{}'
         }
     };
 
+    let other_channels = match args_iter.next() {
+        Some(raw) => raw.split(',').map(|p| p.to_string()).collect(),
+        None => Vec::new(),
+    };
+
     let data = ctx.data.read().await;
     let storage = get_storage(&data);
 
@@ -121,7 +127,7 @@ Got: '{}'
         _ => {}
     };
 
-    let new_config = WereWolfRoleConfig::new(name, emoji, multi_player, masks_role);
+    let new_config = WereWolfRoleConfig::new(name, emoji, multi_player, masks_role, other_channels);
 
     match backend.set_role(guild_id, new_config).await {
         Ok(_) => {

@@ -42,14 +42,19 @@ pub struct WereWolfRoleConfig {
     /// which will also be assigned to the Player and will be used by the Player at some Point in
     /// the Game
     masks_role: bool,
+    /// A Lsit of other Role-Channels that a Player should be added to, like when a Player with
+    /// this Role needs access to one general Chat that belongs to another Role as well as their
+    /// own Chat
+    #[serde(default)]
+    other_role_channels: Vec<String>,
 }
 
 impl Display for WereWolfRoleConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{}({}) - Multiple Players: {} - Contains another Role: {}",
-            self.name, self.emoji, self.mutli_player, self.masks_role
+            "{}({}) - Multiple Players: {} - Contains another Role: {} - Accesses other Channels: {:?}",
+            self.name, self.emoji, self.mutli_player, self.masks_role, self.other_role_channels
         )
     }
 }
@@ -66,7 +71,13 @@ impl Ord for WereWolfRoleConfig {
 }
 
 impl WereWolfRoleConfig {
-    pub fn new<N, E>(name: N, emoji: E, mutli_player: bool, masks_role: bool) -> Self
+    pub fn new<N, E>(
+        name: N,
+        emoji: E,
+        mutli_player: bool,
+        masks_role: bool,
+        other_role_channels: Vec<String>,
+    ) -> Self
     where
         N: Into<String>,
         E: Into<String>,
@@ -76,6 +87,7 @@ impl WereWolfRoleConfig {
             emoji: emoji.into(),
             mutli_player,
             masks_role,
+            other_role_channels,
         }
     }
 
@@ -104,10 +116,11 @@ impl WereWolfRoleConfig {
         R: Rng,
     {
         if !self.masks_role {
-            return Some(WereWolfRoleInstance {
-                name: self.name.clone(),
-                masked_role: None,
-            });
+            return Some(WereWolfRoleInstance::new(
+                self.name.clone(),
+                None,
+                self.other_role_channels.clone(),
+            ));
         }
 
         if non_nested_roles.len() == 0 {
@@ -118,10 +131,15 @@ impl WereWolfRoleConfig {
         let other_role = non_nested_roles.remove(index);
         let other_instance = other_role.to_instance(non_nested_roles, rng).unwrap();
 
-        Some(WereWolfRoleInstance {
-            name: self.name.clone(),
-            masked_role: Some(Box::new(other_instance)),
-        })
+        Some(WereWolfRoleInstance::new(
+            self.name.clone(),
+            Some(Box::new(other_instance)),
+            self.other_role_channels.clone(),
+        ))
+    }
+
+    pub fn channels(&self) -> impl Iterator<Item = String> {
+        std::iter::once(self.name.clone()).chain(self.other_role_channels.clone())
     }
 }
 
@@ -129,16 +147,71 @@ impl WereWolfRoleConfig {
 pub struct WereWolfRoleInstance {
     name: String,
     masked_role: Option<Box<Self>>,
+    extra_channels: Vec<String>,
 }
 
 impl WereWolfRoleInstance {
-    // TODO
-    // There may be certain Roles that also require access to other Channels to properly
-    // interact with them as well, however there is currently no way to configure this
-    pub fn channels(&self) -> Vec<String> {
-        match &self.masked_role {
-            Some(other) => vec![self.name.clone(), other.name.clone()],
-            None => vec![self.name.clone()],
+    fn new(name: String, masked_role: Option<Box<Self>>, extra_channels: Vec<String>) -> Self {
+        Self {
+            name,
+            masked_role,
+            extra_channels,
         }
+    }
+
+    pub fn channels(&self) -> Vec<String> {
+        let mut result = vec![self.name.clone()];
+
+        if let Some(other) = &self.masked_role {
+            result.push(other.name.clone());
+        }
+
+        for other_role in self.extra_channels.iter() {
+            result.push(other_role.to_string());
+        }
+
+        result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn channels_simple() {
+        let instance = WereWolfRoleInstance::new("Test".to_string(), None, Vec::new());
+        let expected = vec!["Test".to_string()];
+
+        let result = instance.channels();
+
+        assert_eq!(expected, result);
+    }
+    #[test]
+    fn channels_masked_role() {
+        let instance = WereWolfRoleInstance::new(
+            "Test".to_string(),
+            Some(Box::new(WereWolfRoleInstance::new(
+                "Other".to_string(),
+                None,
+                Vec::new(),
+            ))),
+            Vec::new(),
+        );
+        let expected = vec!["Test".to_string(), "Other".to_string()];
+
+        let result = instance.channels();
+
+        assert_eq!(expected, result);
+    }
+    #[test]
+    fn channels_extra_roles() {
+        let instance =
+            WereWolfRoleInstance::new("Test".to_string(), None, vec!["Extra".to_string()]);
+        let expected = vec!["Test".to_string(), "Extra".to_string()];
+
+        let result = instance.channels();
+
+        assert_eq!(expected, result);
     }
 }

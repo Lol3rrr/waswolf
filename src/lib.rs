@@ -174,7 +174,7 @@ impl EventHandler for Handler {
 
     #[tracing::instrument(skip(self, ctx, new_message))]
     async fn message(&self, ctx: Context, new_message: Message) {
-        let mut ref_message = match &new_message.referenced_message {
+        let ref_message = match &new_message.referenced_message {
             Some(m) => m.clone(),
             None => return,
         };

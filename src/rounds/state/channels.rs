@@ -192,20 +192,26 @@ pub async fn setup_role_channels(
     let mut role_channel: BTreeMap<String, ChannelId> = BTreeMap::new();
 
     for role in roles {
-        let channel_name = role.name().to_lowercase();
+        for c_role_name in role.channels() {
+            if role_channel.contains_key(&c_role_name) {
+                continue;
+            }
 
-        let channel_id = setup_channel(
-            &channel_name,
-            &guild,
-            guild_channel,
-            *category_id,
-            &default_permissions,
-            moderators.iter().map(|id| *id),
-            ctx,
-        )
-        .await?;
+            let channel_name = c_role_name.to_lowercase();
 
-        role_channel.insert(role.name().to_owned(), channel_id);
+            let channel_id = setup_channel(
+                &channel_name,
+                &guild,
+                guild_channel,
+                *category_id,
+                &default_permissions,
+                moderators.iter().map(|id| *id),
+                ctx,
+            )
+            .await?;
+
+            role_channel.insert(c_role_name, channel_id);
+        }
     }
 
     Ok(role_channel)

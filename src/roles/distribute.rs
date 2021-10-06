@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, ops::MulAssign};
 
 use rand::Rng;
 use serenity::model::id::UserId;
@@ -17,6 +17,23 @@ pub enum DistributeError {
     },
 }
 
+fn get_roles<'i, I, F>(roles: I, check: F) -> Vec<WereWolfRoleConfig>
+where
+    F: Fn(&WereWolfRoleConfig) -> bool,
+    I: Iterator<Item = (&'i WereWolfRoleConfig, &'i usize)>,
+{
+    let mut result = Vec::new();
+
+    let iter = roles.filter(|(r, _)| check(r)).map(|(r, c)| (r, *c));
+    for (role, count) in iter {
+        for _ in 0..count {
+            result.push(role.clone());
+        }
+    }
+
+    result
+}
+
 /// This will actually distribute the Roles among the Players
 fn distribute<R>(
     mut participants: Vec<UserId>,
@@ -26,33 +43,8 @@ fn distribute<R>(
 where
     R: Rng,
 {
-    let mut nested_roles = {
-        let mut tmp = Vec::new();
-        for (role, count) in roles
-            .iter()
-            .filter(|(r, _)| r.masks_role())
-            .map(|(r, c)| (r, *c))
-        {
-            for _ in 0..count {
-                tmp.push(role.clone());
-            }
-        }
-        tmp
-    };
-
-    let mut non_nested_roles = {
-        let mut tmp = Vec::new();
-        for (role, count) in roles
-            .iter()
-            .filter(|(r, _)| !r.masks_role())
-            .map(|(r, c)| (r, *c))
-        {
-            for _ in 0..count {
-                tmp.push(role.clone());
-            }
-        }
-        tmp
-    };
+    let mut nested_roles = get_roles(roles.iter(), |r| r.masks_role());
+    let mut non_nested_roles = get_roles(roles.iter(), |r| !r.masks_role());
 
     if non_nested_roles.len() != participants.len() {
         return Err(DistributeError::MismatchedCount {
@@ -69,7 +61,7 @@ where
     }
 
     let mut result = BTreeMap::new();
-    for nested_roles_remaining in nested_roles.len()..0 {
+    for nested_roles_remaining in (1..=nested_roles.len()).rev() {
         let index = rng.gen_range(0..nested_roles_remaining);
         let nested_role = nested_roles.remove(index);
 
@@ -78,7 +70,7 @@ where
 
         result.insert(user, instance);
     }
-    for r_remaining in non_nested_roles.len()..0 {
+    for r_remaining in (1..=non_nested_roles.len()).rev() {
         let index = rng.gen_range(0..r_remaining);
         let role = non_nested_roles.remove(index);
 
