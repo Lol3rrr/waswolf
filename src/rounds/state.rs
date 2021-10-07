@@ -237,12 +237,6 @@ impl RoundState<RoleCounts> {
     ) -> Result<(), serenity::Error> {
         // TODO
         // Take a closer look at these Failure cases
-        
-        let playerCount: uSize = match.self.state.participants.len();
-        if playerCount < 1 {
-            tracing::error!("Cannot start the game with: {} player", playerCount);
-            return Ok(());
-        }
 
         let role = match self.state.role_messages.remove(&message_id) {
             Some(role) => role,
@@ -318,22 +312,27 @@ impl TryTransition<RoundState<RegisterUsers>> for RoundState<RegisterRoles> {
             source.mods.len()
         );
 
-        let roles_msg = roles::get_roles_msg(&source.role_configs);
+        let playerCount: usize = source.state.participants.len();
+        if playerCount < 1 {
+            source.map_err(TransitionError::new("Cannot start the game with: no player"))?;
+        }else{
+            let roles_msg = roles::get_roles_msg(&source.role_configs);
 
-        let cfg_message = source
-            .update_msg(context.ctx, &roles_msg, &[])
-            .await
-            .map_err(TransitionError::new)?;
+            let cfg_message = source
+                .update_msg(context.ctx, &roles_msg, &[])
+                .await
+                .map_err(TransitionError::new)?;
 
-        let page = 0;
-        roles::cfg_role_msg_reactions(&cfg_message, context.ctx, &source.role_configs, page).await;
+            let page = 0;
+            roles::cfg_role_msg_reactions(&cfg_message, context.ctx, &source.role_configs, page).await;
 
-        let nstate = RegisterRoles {
-            participants: source.state.participants.clone(),
-            roles: Vec::new(),
-            role_page: page,
-        };
-        Ok(source.transition(nstate))
+            let nstate = RegisterRoles {
+                participants: source.state.participants.clone(),
+                roles: Vec::new(),
+                role_page: page,
+            };
+            Ok(source.transition(nstate))
+        }
     }
 }
 
