@@ -9,3 +9,6 @@ pub use list_roles::list_roles;
 
 mod werewolf;
 pub use werewolf::werewolf;
+
+mod help;
+pub use help::help;

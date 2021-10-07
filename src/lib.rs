@@ -240,20 +240,7 @@ async fn werewolf(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
 
 #[command]
 async fn help(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
-    tracing::debug!("Received help Command");
-
-    if let Err(e) = msg
-        .channel_id
-        .send_message(&ctx.http, |m| {
-            util::help::generate_help_message(m);
-            m
-        })
-        .await
-    {
-        tracing::error!("Sending Help-Message: {:?}", e);
-    }
-
-    Ok(())
+    commands::help(ctx, msg).await
 }
 
 #[command]
