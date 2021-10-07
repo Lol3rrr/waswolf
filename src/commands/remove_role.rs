@@ -5,7 +5,7 @@ use serenity::{
     model::channel::Message,
 };
 
-use crate::{get_storage, util, MOD_ROLE_NAME};
+use crate::{get_storage, storage::StorageBackend, util, MOD_ROLE_NAME};
 
 #[tracing::instrument(skip(ctx, msg, args))]
 pub async fn remove_role(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
@@ -58,7 +58,7 @@ pub async fn remove_role(ctx: &Context, msg: &Message, args: Args) -> CommandRes
     let data = ctx.data.read().await;
     let storage = get_storage(&data);
 
-    match storage.backend().remove_role(guild_id, role_name).await {
+    match storage.remove_role(guild_id, role_name).await {
         Ok(_) => {
             util::msgs::send_content(
                 channel_id,

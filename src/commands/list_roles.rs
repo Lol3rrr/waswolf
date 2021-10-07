@@ -2,7 +2,7 @@ use serenity::{
     client::Context, framework::standard::CommandResult, http::CacheHttp, model::channel::Message,
 };
 
-use crate::{get_storage, roles::WereWolfRoleConfig, util};
+use crate::{get_storage, roles::WereWolfRoleConfig, storage::StorageBackend, util};
 
 fn role_list_msg(roles: &[WereWolfRoleConfig]) -> String {
     if roles.is_empty() {
@@ -27,7 +27,7 @@ pub async fn list_roles(ctx: &Context, msg: &Message) -> CommandResult {
     let data = ctx.data.read().await;
     let storage = get_storage(&data);
 
-    let roles_result = storage.backend().load_roles(msg.guild_id.unwrap()).await;
+    let roles_result = storage.load_roles(msg.guild_id.unwrap()).await;
 
     let roles = match roles_result {
         Ok(r) => r,

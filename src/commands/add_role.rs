@@ -5,7 +5,10 @@ use serenity::{
     model::channel::Message,
 };
 
-use crate::{get_storage, parse_bool, roles::WereWolfRoleConfig, util, MOD_ROLE_NAME};
+use crate::{
+    get_storage, parse_bool, roles::WereWolfRoleConfig, storage::StorageBackend, util,
+    MOD_ROLE_NAME,
+};
 
 fn missing_part(missing_part: &str) -> String {
     format!("```
@@ -134,9 +137,7 @@ Got: '{}'
     let data = ctx.data.read().await;
     let storage = get_storage(&data);
 
-    let backend = storage.backend();
-
-    if let Ok(r) = backend.load_roles(guild_id).await {
+    if let Ok(r) = storage.load_roles(guild_id).await {
         if r.iter().any(|c| c.name() == name.as_str()) {
             let resp = format!("There already exists a Role with the Name: {}", name);
             util::msgs::send_content(channel_id, ctx.http(), &resp).await;
@@ -153,7 +154,7 @@ Got: '{}'
 
     let new_config = WereWolfRoleConfig::new(name, emoji, multi_player, masks_role, other_channels);
 
-    match backend.set_role(guild_id, new_config).await {
+    match storage.set_role(guild_id, new_config).await {
         Ok(_) => {
             tracing::debug!("Created new Role");
 

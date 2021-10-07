@@ -46,9 +46,30 @@ impl Storage {
             backend: Arc::new(backend),
         }
     }
+}
 
-    /// Returns a reference to the underlying Storage Backend
-    pub fn backend(&self) -> &(dyn StorageBackend + Send + Sync) {
-        self.backend.as_ref()
+#[async_trait]
+impl StorageBackend for Storage {
+    async fn load_roles(
+        &self,
+        guild: GuildId,
+    ) -> Result<Vec<WereWolfRoleConfig>, Box<dyn Error + Send>> {
+        self.backend.load_roles(guild).await
+    }
+
+    async fn set_role(
+        &self,
+        guild: GuildId,
+        role: WereWolfRoleConfig,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        self.backend.set_role(guild, role).await
+    }
+
+    async fn remove_role(
+        &self,
+        guild: GuildId,
+        role_name: &str,
+    ) -> Result<(), Box<dyn Error + Send>> {
+        self.backend.remove_role(guild, role_name).await
     }
 }
