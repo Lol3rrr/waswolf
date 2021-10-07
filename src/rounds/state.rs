@@ -237,6 +237,12 @@ impl RoundState<RoleCounts> {
     ) -> Result<(), serenity::Error> {
         // TODO
         // Take a closer look at these Failure cases
+        
+        let playerCount: uSize = match.self.state.participants.len();
+        if playerCount < 1 {
+            tracing::error!("Cannot start the game with: {} player", playerCount);
+            return Ok(());
+        }
 
         let role = match self.state.role_messages.remove(&message_id) {
             Some(role) => role,
