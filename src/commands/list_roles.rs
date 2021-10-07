@@ -23,11 +23,12 @@ pub async fn list_roles(ctx: &Context, msg: &Message) -> CommandResult {
     tracing::debug!("Received list-roles Command");
 
     let channel_id = msg.channel_id;
+    let guild_id = msg.guild_id.unwrap();
 
     let data = ctx.data.read().await;
     let storage = get_storage(&data);
 
-    let roles_result = storage.load_roles(msg.guild_id.unwrap()).await;
+    let roles_result = storage.load_roles(guild_id).await;
 
     let roles = match roles_result {
         Ok(r) => r,

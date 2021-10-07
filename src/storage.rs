@@ -6,6 +6,8 @@ use crate::roles::WereWolfRoleConfig;
 
 pub mod discord;
 
+mod cache;
+
 /// The Storage Backend that should be used to load, store and update Custom Werewolf Roles for a
 /// Guild
 #[async_trait]
@@ -34,6 +36,7 @@ pub trait StorageBackend {
 
 pub struct Storage {
     backend: Arc<dyn StorageBackend + Send + Sync>,
+    cache: Arc<cache::Cache>,
 }
 
 impl Storage {
@@ -44,6 +47,7 @@ impl Storage {
     {
         Self {
             backend: Arc::new(backend),
+            cache: Arc::new(cache::Cache::new()),
         }
     }
 }
@@ -54,7 +58,17 @@ impl StorageBackend for Storage {
         &self,
         guild: GuildId,
     ) -> Result<Vec<WereWolfRoleConfig>, Box<dyn Error + Send>> {
-        self.backend.load_roles(guild).await
+        if let Some(r) = self.cache.get_roles(guild) {
+            return Ok(r);
+        }
+
+        match self.backend.load_roles(guild).await {
+            Ok(r) => {
+                self.cache.populate(guild, r.clone());
+                Ok(r)
+            }
+            Err(e) => Err(e),
+        }
     }
 
     async fn set_role(
@@ -62,6 +76,7 @@ impl StorageBackend for Storage {
         guild: GuildId,
         role: WereWolfRoleConfig,
     ) -> Result<(), Box<dyn Error + Send>> {
+        self.cache.set_role(guild, role.clone());
         self.backend.set_role(guild, role).await
     }
 
@@ -70,6 +85,7 @@ impl StorageBackend for Storage {
         guild: GuildId,
         role_name: &str,
     ) -> Result<(), Box<dyn Error + Send>> {
+        self.cache.remove_role(guild, role_name);
         self.backend.remove_role(guild, role_name).await
     }
 }
