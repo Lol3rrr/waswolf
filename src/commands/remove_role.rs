@@ -14,7 +14,7 @@ pub async fn remove_role(ctx: &Context, msg: &Message, args: Args) -> CommandRes
     let channel_id = msg.channel_id;
     let guild_id = msg.guild_id.unwrap();
 
-    let server_mods = match util::mods::load_mods(&ctx, guild_id, MOD_ROLE_NAME).await {
+    let server_mods = match util::mods::load_mods(ctx, guild_id, MOD_ROLE_NAME).await {
         Ok(m) => m,
         Err(e) => {
             tracing::error!("Loading Mods: {:?}", e);

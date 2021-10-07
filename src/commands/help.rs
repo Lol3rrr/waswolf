@@ -3,7 +3,7 @@ use serenity::{
     model::channel::Message, utils::Color,
 };
 
-const COMMANDS: [(&'static str, &'static str); 4] = [
+const COMMANDS: [(&str, &str); 4] = [
     ("werewolf", "Starts a new Werewolf Round"),
     (
         "add-role {name} {emoji} {multi-player} {masks role} {extra channels}",
