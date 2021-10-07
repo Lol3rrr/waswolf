@@ -27,6 +27,21 @@ pub use states::*;
 mod traits;
 pub use traits::*;
 
+pub struct StringError(String);
+
+impl std::fmt::Debug for StringError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+    write!(f, "{:?}", self.0)
+  }
+}
+impl std::fmt::Display for StringError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+    write!(f, "{}", self.0)
+  }
+}
+impl std::error::Error for StringError {}
+
+
 /// The State for a given Round
 #[derive(Debug, Clone)]
 pub struct RoundState<S> {
@@ -314,7 +329,9 @@ impl TryTransition<RoundState<RegisterUsers>> for RoundState<RegisterRoles> {
 
         let playerCount: usize = source.state.participants.len();
         if playerCount < 1{
-            return Err(TransitionError::new("Cannot start the game with no player"));
+            return Err(TransitionError::new(StringError("Cannot start the game with no player".to_string())));
+            
+
         }
         let roles_msg = roles::get_roles_msg(&source.role_configs);
 
@@ -473,3 +490,4 @@ impl TryTransition<RoundState<Ongoing>> for RoundState<Done> {
         Ok(source.transition(nstate))
     }
 }
+
