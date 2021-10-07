@@ -9,7 +9,7 @@ use serenity::{
     },
 };
 
-use crate::{roles::WereWolfRole, rounds::state::TransitionContext, Reactions};
+use crate::{roles::WereWolfRoleConfig, rounds::state::TransitionContext, Reactions};
 
 use super::state::{
     Done, Ongoing, RegisterRoles, RegisterUsers, RoleCounts, RoundState, TransitionError,
@@ -42,8 +42,11 @@ impl RoundSM {
         message_id: MessageId,
         channel: ChannelId,
         guild_id: GuildId,
+        role_configs: Vec<WereWolfRoleConfig>,
     ) -> Self {
-        Self::RegisterUsers(RoundState::new(mods, message_id, channel, guild_id).await)
+        Self::RegisterUsers(
+            RoundState::new(mods, message_id, channel, guild_id, role_configs).await,
+        )
     }
 
     pub async fn update_msg(&self, ctx: &Context, msg: &str) -> Result<Message, serenity::Error> {
@@ -139,15 +142,17 @@ impl RoundSM {
                     return Ok(Self::RegisterRoles(state));
                 }
 
-                match WereWolfRole::from_emoji(react_data.clone()) {
-                    Some(role) => {
-                        tracing::info!("Added Role({:?}) to Round", role);
-                        state.add_role(role);
+                let emoij_str = react_data.to_string();
+                match state.find_role_config(&react_data.to_string()) {
+                    Some(r) => {
+                        tracing::debug!("Added Role({:?}) to Round", r);
+                        state.add_role(r);
 
                         Ok(Self::RegisterRoles(state))
                     }
                     None => {
-                        tracing::error!("Unknown Role: {:?}", react_data);
+                        tracing::error!("Unknown RoleConfig for '{:?}'", emoij_str);
+
                         Ok(Self::RegisterRoles(state))
                     }
                 }
@@ -191,7 +196,7 @@ impl RoundSM {
                     return Self::RegisterRoles(state);
                 }
 
-                let removed_role = match WereWolfRole::from_emoji(reaction.emoji) {
+                let removed_role = match state.find_role_config(&reaction.emoji.to_string()) {
                     Some(r) => r,
                     None => {
                         tracing::error!("Unknown Reaction was removed");

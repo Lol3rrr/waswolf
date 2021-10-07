@@ -1,6 +1,6 @@
 use crate::Reactions;
 
-use super::WereWolfRole;
+use super::WereWolfRoleConfig;
 
 const MAX_REACTIONS: usize = 17;
 
@@ -13,7 +13,7 @@ fn is_last_page(role_count: usize, page: usize) -> bool {
 }
 
 /// Generates the list of reactions for the given List of Roles and the correct Page
-pub fn reactions(roles: &[WereWolfRole], page: usize) -> Vec<Reactions> {
+pub fn reactions(roles: &[WereWolfRoleConfig], page: usize) -> Vec<Reactions> {
     let mut result = Vec::new();
 
     // If it is not the first Page, we first add the PreviousPage Reaction as all
@@ -30,7 +30,7 @@ pub fn reactions(roles: &[WereWolfRole], page: usize) -> Vec<Reactions> {
             Some(r) => r,
             None => break,
         };
-        result.push(Reactions::Custom(role.to_emoji().to_string()));
+        result.push(Reactions::Custom(role.emoji().to_string()));
     }
 
     // If it is not the last page, we need to add a button to navigate to the next page
@@ -71,12 +71,12 @@ mod tests {
 
     #[test]
     fn first_page() {
-        let roles = vec![WereWolfRole::Werwolf; 30];
+        let roles = vec![WereWolfRoleConfig::new("Werewolf", ":)", false, false, Vec::new()); 30];
         let page = 0;
 
         let result = reactions(&roles, page);
         let expected: Vec<Reactions> = {
-            let mut tmp = vec![Reactions::Custom(WereWolfRole::Werwolf.to_emoji().to_string()); 17];
+            let mut tmp = vec![Reactions::Custom(":)".to_string()); 17];
             tmp.push(Reactions::NextPage);
             tmp.push(Reactions::Confirm);
             tmp
@@ -85,18 +85,13 @@ mod tests {
     }
     #[test]
     fn middle_page() {
-        let roles = vec![WereWolfRole::Werwolf; 50];
+        let roles = vec![WereWolfRoleConfig::new("Werewolf", ":)", false, false, Vec::new()); 50];
         let page = 1;
 
         let result = reactions(&roles, page);
         let expected: Vec<Reactions> = {
             let mut tmp = vec![Reactions::PreviousPage];
-            tmp.extend(vec![
-                Reactions::Custom(
-                    WereWolfRole::Werwolf.to_emoji().to_string()
-                );
-                17
-            ]);
+            tmp.extend(vec![Reactions::Custom(":)".to_string()); 17]);
             tmp.push(Reactions::NextPage);
             tmp.push(Reactions::Confirm);
             tmp
@@ -105,18 +100,14 @@ mod tests {
     }
     #[test]
     fn last_page() {
-        let roles = vec![WereWolfRole::Werwolf; 17 * 3];
+        let roles =
+            vec![WereWolfRoleConfig::new("Werewolf", ":)", false, false, Vec::new()); 17 * 3];
         let page = 2;
 
         let result = reactions(&roles, page);
         let expected: Vec<Reactions> = {
             let mut tmp = vec![Reactions::PreviousPage];
-            tmp.extend(vec![
-                Reactions::Custom(
-                    WereWolfRole::Werwolf.to_emoji().to_string()
-                );
-                17
-            ]);
+            tmp.extend(vec![Reactions::Custom(":)".to_string()); 17]);
             tmp.push(Reactions::Confirm);
             tmp
         };

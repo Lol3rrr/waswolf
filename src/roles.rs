@@ -1,6 +1,8 @@
 use std::fmt::Display;
 
-use serenity::model::channel::{Message, ReactionType};
+use rand::Rng;
+use serde::{Deserialize, Serialize};
+use serenity::model::channel::Message;
 
 mod cfg_reactions;
 
@@ -8,14 +10,14 @@ mod roles_msg;
 pub use roles_msg::get_roles_msg;
 
 mod distribute;
-pub use distribute::distribute_roles;
+pub use distribute::{distribute_roles, DistributeError};
 
 use crate::rounds::BotContext;
 
 pub async fn cfg_role_msg_reactions(
     message: &Message,
     ctx: &dyn BotContext,
-    roles: &[WereWolfRole],
+    roles: &[WereWolfRoleConfig],
     page: usize,
 ) {
     let reactions = cfg_reactions::reactions(roles, page);
@@ -26,243 +28,190 @@ pub async fn cfg_role_msg_reactions(
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub enum WereWolfRole {
-    Werwolf,
-    Amor,
-    Gerber,
-    HarterBursche,
-    Hexe,
-    Hure,
-    Leibwächter,
-    Seher,
-    AlteVettel,
-    AlterMann,
-    Aussätzige,
-    Beschwörerin,
-    Brandstifter,
-    DoppelGängerin,
-    Geist,
-    Händler,
-    Jäger,
-    Lynkanthrophin,
-    Metzger,
-    ParanormalerErmittler,
-    Prinz,
-    Priester,
-    Trunkenbold(Option<Box<WereWolfRole>>),
-    Russe,
-    SeherLehrling,
-    Strolch,
-    UnruheStifter,
-    Verfluchter,
-    Zaubermeisterin,
-    FreiMaurer,
-    Vampire,
-    EinsamerWolf,
-    WeißerWolf,
+/// The Config for a Custom Werewolf Role
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+pub struct WereWolfRoleConfig {
+    /// The Name of the Role used for Displaying it as well as for the Channel names
+    name: String,
+    /// The Emoji used to select the Role itself when creating the Round and the like
+    emoji: String,
+    /// Whether or not this Role can be assigned to mutliple Players in a single Round, notable
+    /// examples of this would be the "Werewolf" Role itself
+    mutli_player: bool,
+    /// Whether or not this Role "masks" another Role, meaning that it also needs one more Role
+    /// which will also be assigned to the Player and will be used by the Player at some Point in
+    /// the Game
+    masks_role: bool,
+    /// A Lsit of other Role-Channels that a Player should be added to, like when a Player with
+    /// this Role needs access to one general Chat that belongs to another Role as well as their
+    /// own Chat
+    #[serde(default)]
+    other_role_channels: Vec<String>,
 }
 
-impl Display for WereWolfRole {
+impl Display for WereWolfRoleConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Werwolf => write!(f, "Werwolf"),
-            Self::Amor => write!(f, "Amor"),
-            Self::Gerber => write!(f, "Gerber"),
-            Self::HarterBursche => write!(f, "HarterBursche"),
-            Self::Hexe => write!(f, "Hexe"),
-            Self::Hure => write!(f, "Hure"),
-            Self::Leibwächter => write!(f, "Leibwächter"),
-            Self::Seher => write!(f, "Seher"),
-            Self::AlteVettel => write!(f, "AlteVettel"),
-            Self::AlterMann => write!(f, "AlterMann"),
-            Self::Aussätzige => write!(f, "Aussätzige"),
-            Self::Beschwörerin => write!(f, "Beschwörerin"),
-            Self::Brandstifter => write!(f, "Brandstifter"),
-            Self::DoppelGängerin => write!(f, "DoppelGängerin"),
-            Self::Geist => write!(f, "Geist"),
-            Self::Händler => write!(f, "Händler"),
-            Self::Jäger => write!(f, "Jäger"),
-            Self::Lynkanthrophin => write!(f, "Lynkanthrophin"),
-            Self::Metzger => write!(f, "Metzger"),
-            Self::ParanormalerErmittler => write!(f, "ParanormalerErmittler"),
-            Self::Prinz => write!(f, "Prinz"),
-            Self::Priester => write!(f, "Priester"),
-            Self::Trunkenbold(_) => write!(f, "Trunkenbold"),
-            Self::Russe => write!(f, "Russe"),
-            Self::SeherLehrling => write!(f, "SeherLehrling"),
-            Self::Strolch => write!(f, "Strolch"),
-            Self::UnruheStifter => write!(f, "UnruheStifter"),
-            Self::Verfluchter => write!(f, "Verfluchter"),
-            Self::Zaubermeisterin => write!(f, "Zaubermeisterin"),
-            Self::FreiMaurer => write!(f, "Freimaurer"),
-            Self::Vampire => write!(f, "Vampire"),
-            Self::EinsamerWolf => write!(f, "Einsamer Wolf"),
-            Self::WeißerWolf => write!(f, "Weißer Wolf"),
-        }
+        write!(
+            f,
+            "{}({}) - Multiple Players: {} - Contains another Role: {} - Accesses other Channels: {:?}",
+            self.name, self.emoji, self.mutli_player, self.masks_role, self.other_role_channels
+        )
     }
 }
 
-impl WereWolfRole {
-    pub fn all_roles() -> Vec<WereWolfRole> {
-        vec![
-            Self::Werwolf,
-            Self::Amor,
-            Self::Gerber,
-            Self::HarterBursche,
-            Self::Hexe,
-            Self::Hure,
-            Self::Leibwächter,
-            Self::Seher,
-            Self::AlteVettel,
-            Self::AlterMann,
-            Self::Aussätzige,
-            Self::Beschwörerin,
-            Self::Brandstifter,
-            Self::DoppelGängerin,
-            Self::Geist,
-            Self::Händler,
-            Self::Jäger,
-            Self::Lynkanthrophin,
-            Self::Metzger,
-            Self::ParanormalerErmittler,
-            Self::Prinz,
-            Self::Priester,
-            Self::Trunkenbold(None),
-            Self::Russe,
-            Self::SeherLehrling,
-            Self::Strolch,
-            Self::UnruheStifter,
-            Self::Verfluchter,
-            Self::Zaubermeisterin,
-            Self::FreiMaurer,
-            Self::Vampire,
-            Self::EinsamerWolf,
-            Self::WeißerWolf,
-        ]
+impl PartialOrd for WereWolfRoleConfig {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.name.partial_cmp(&other.name)
     }
-
-    pub fn needs_multiple(&self) -> bool {
-        matches!(self, Self::Werwolf | Self::FreiMaurer | Self::Vampire)
+}
+impl Ord for WereWolfRoleConfig {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.name.cmp(&other.name)
     }
+}
 
-    pub fn needs_other_role(&self) -> bool {
-        matches!(self, Self::Trunkenbold(None))
-    }
-
-    pub const fn to_emoji(&self) -> char {
-        match self {
-            Self::Werwolf => '🐺',
-            Self::Amor => '💛',
-            Self::Gerber => '🇬',
-            Self::HarterBursche => '💪',
-            Self::Hexe => '🧙',
-            Self::Hure => '🏩',
-            Self::Leibwächter => '🥷',
-            Self::Seher => '🔮',
-            Self::AlteVettel => '👵',
-            Self::AlterMann => '👴',
-            Self::Aussätzige => '🇦',
-            Self::Beschwörerin => '🤫',
-            Self::Brandstifter => '🔥',
-            Self::DoppelGängerin => '👯',
-            Self::Geist => '👻',
-            Self::Händler => '💰',
-            Self::Jäger => '🏹',
-            Self::Lynkanthrophin => '🐈',
-            Self::Metzger => '🔪',
-            Self::ParanormalerErmittler => '👮',
-            Self::Prinz => '🤴',
-            Self::Priester => '⛪',
-            Self::Trunkenbold(_) => '🍺',
-            Self::Russe => '🪆',
-            Self::SeherLehrling => '👀',
-            Self::Strolch => '🇸',
-            Self::UnruheStifter => '💥',
-            Self::Verfluchter => '🧟',
-            Self::Zaubermeisterin => '🪄',
-            Self::FreiMaurer => '🧱',
-            Self::Vampire => '🧛',
-            Self::EinsamerWolf => '🐻',
-            Self::WeißerWolf => '🦝',
+impl WereWolfRoleConfig {
+    pub fn new<N, E>(
+        name: N,
+        emoji: E,
+        mutli_player: bool,
+        masks_role: bool,
+        other_role_channels: Vec<String>,
+    ) -> Self
+    where
+        N: Into<String>,
+        E: Into<String>,
+    {
+        Self {
+            name: name.into(),
+            emoji: emoji.into(),
+            mutli_player,
+            masks_role,
+            other_role_channels,
         }
     }
 
-    pub fn from_emoji(emoji: ReactionType) -> Option<WereWolfRole> {
-        let mut data = emoji.as_data();
-        match data.remove(0) {
-            '🐺' => Some(Self::Werwolf),
-            '💛' => Some(Self::Amor),
-            '🇬' => Some(Self::Gerber),
-            '💪' => Some(Self::HarterBursche),
-            '🧙' => Some(Self::Hexe),
-            '🏩' => Some(Self::Hure),
-            '🥷' => Some(Self::Leibwächter),
-            '🔮' => Some(Self::Seher),
-            '👵' => Some(Self::AlteVettel),
-            '👴' => Some(Self::AlterMann),
-            '🇦' => Some(Self::Aussätzige),
-            '🤫' => Some(Self::Beschwörerin),
-            '🔥' => Some(Self::Brandstifter),
-            '👯' => Some(Self::DoppelGängerin),
-            '👻' => Some(Self::Geist),
-            '💰' => Some(Self::Händler),
-            '🏹' => Some(Self::Jäger),
-            '🐈' => Some(Self::Lynkanthrophin),
-            '🔪' => Some(Self::Metzger),
-            '👮' => Some(Self::ParanormalerErmittler),
-            '🤴' => Some(Self::Prinz),
-            '⛪' => Some(Self::Priester),
-            '🍺' => Some(Self::Trunkenbold(None)),
-            '🪆' => Some(Self::Russe),
-            '👀' => Some(Self::SeherLehrling),
-            '🇸' => Some(Self::Strolch),
-            '💥' => Some(Self::UnruheStifter),
-            '🧟' => Some(Self::Verfluchter),
-            '🪄' => Some(Self::Zaubermeisterin),
-            '🧱' => Some(Self::FreiMaurer),
-            '🧛' => Some(Self::Vampire),
-            '🐻' => Some(Self::EinsamerWolf),
-            '🦝' => Some(Self::WeißerWolf),
-            _ => None,
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn emoji(&self) -> &str {
+        &self.emoji
+    }
+
+    pub fn multi_player(&self) -> bool {
+        self.mutli_player
+    }
+
+    pub fn masks_role(&self) -> bool {
+        self.masks_role
+    }
+
+    pub fn to_instance<R>(
+        &self,
+        non_nested_roles: &mut Vec<WereWolfRoleConfig>,
+        rng: &mut R,
+    ) -> Option<WereWolfRoleInstance>
+    where
+        R: Rng,
+    {
+        if !self.masks_role {
+            return Some(WereWolfRoleInstance::new(
+                self.name.clone(),
+                None,
+                self.other_role_channels.clone(),
+            ));
+        }
+
+        if non_nested_roles.is_empty() {
+            return None;
+        }
+        let index: usize = rng.gen_range(0..non_nested_roles.len());
+
+        let other_role = non_nested_roles.remove(index);
+        let other_instance = other_role.to_instance(non_nested_roles, rng).unwrap();
+
+        Some(WereWolfRoleInstance::new(
+            self.name.clone(),
+            Some(Box::new(other_instance)),
+            self.other_role_channels.clone(),
+        ))
+    }
+
+    pub fn channels(&self) -> impl Iterator<Item = String> {
+        std::iter::once(self.name.clone()).chain(self.other_role_channels.clone())
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct WereWolfRoleInstance {
+    name: String,
+    masked_role: Option<Box<Self>>,
+    extra_channels: Vec<String>,
+}
+
+impl WereWolfRoleInstance {
+    fn new(name: String, masked_role: Option<Box<Self>>, extra_channels: Vec<String>) -> Self {
+        Self {
+            name,
+            masked_role,
+            extra_channels,
         }
     }
 
     pub fn channels(&self) -> Vec<String> {
-        match self {
-            Self::Werwolf => vec![format!("{}", self)],
-            Self::Amor => vec![format!("{}", self)],
-            Self::Gerber => vec![format!("{}", self)],
-            Self::HarterBursche => vec![format!("{}", self)],
-            Self::Hexe => vec![format!("{}", self)],
-            Self::Hure => vec![format!("{}", self)],
-            Self::Leibwächter => vec![format!("{}", self)],
-            Self::Seher => vec![format!("{}", self)],
-            Self::AlteVettel => vec![format!("{}", self)],
-            Self::AlterMann => vec![format!("{}", self)],
-            Self::Aussätzige => vec![format!("{}", self)],
-            Self::Beschwörerin => vec![format!("{}", self)],
-            Self::Brandstifter => vec![format!("{}", self)],
-            Self::DoppelGängerin => vec![format!("{}", self)],
-            Self::Geist => vec![format!("{}", self)],
-            Self::Händler => vec![format!("{}", self)],
-            Self::Jäger => vec![format!("{}", self)],
-            Self::Lynkanthrophin => vec![format!("{}", self)],
-            Self::Metzger => vec![format!("{}", self)],
-            Self::ParanormalerErmittler => vec![format!("{}", self)],
-            Self::Prinz => vec![format!("{}", self)],
-            Self::Priester => vec![format!("{}", self)],
-            Self::Trunkenbold(_) => vec![format!("{}", self)],
-            Self::Russe => vec![format!("{}", self)],
-            Self::SeherLehrling => vec![format!("{}", self)],
-            Self::Strolch => vec![format!("{}", self)],
-            Self::UnruheStifter => vec![format!("{}", self)],
-            Self::Verfluchter => vec![format!("{}", self)],
-            Self::Zaubermeisterin => vec![format!("{}", self)],
-            Self::FreiMaurer => vec![format!("{}", self)],
-            Self::Vampire => vec![format!("{}", self)],
-            Self::EinsamerWolf => vec![format!("{}", self), format!("{}", Self::Werwolf)],
-            Self::WeißerWolf => vec![format!("{}", self), format!("{}", Self::Werwolf)],
+        let mut result = vec![self.name.clone()];
+
+        if let Some(other) = &self.masked_role {
+            result.push(other.name.clone());
         }
+
+        for other_role in self.extra_channels.iter() {
+            result.push(other_role.to_string());
+        }
+
+        result
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn channels_simple() {
+        let instance = WereWolfRoleInstance::new("Test".to_string(), None, Vec::new());
+        let expected = vec!["Test".to_string()];
+
+        let result = instance.channels();
+
+        assert_eq!(expected, result);
+    }
+    #[test]
+    fn channels_masked_role() {
+        let instance = WereWolfRoleInstance::new(
+            "Test".to_string(),
+            Some(Box::new(WereWolfRoleInstance::new(
+                "Other".to_string(),
+                None,
+                Vec::new(),
+            ))),
+            Vec::new(),
+        );
+        let expected = vec!["Test".to_string(), "Other".to_string()];
+
+        let result = instance.channels();
+
+        assert_eq!(expected, result);
+    }
+    #[test]
+    fn channels_extra_roles() {
+        let instance =
+            WereWolfRoleInstance::new("Test".to_string(), None, vec!["Extra".to_string()]);
+        let expected = vec!["Test".to_string(), "Extra".to_string()];
+
+        let result = instance.channels();
+
+        assert_eq!(expected, result);
     }
 }

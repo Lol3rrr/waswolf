@@ -11,6 +11,10 @@ serenity = { version = "0.10", default_features = false, features = ["builder", 
 async-trait = { version = "0.1" }
 rand = { version = "0.8" }
 
+# Serialization
+serde = { version = "1.0" }
+serde_json = { version = "1.0" }
+
 # Tracing
 tracing = { version = "0.1" }
 tracing-futures = { version = "0.2" }

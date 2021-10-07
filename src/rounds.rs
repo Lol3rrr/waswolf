@@ -10,6 +10,8 @@ use serenity::{
     prelude::Mutex,
 };
 
+use crate::roles::WereWolfRoleConfig;
+
 use self::state::TransitionError;
 
 mod sm;
@@ -29,9 +31,10 @@ impl Round {
         message_id: MessageId,
         channel: ChannelId,
         guild_id: GuildId,
+        role_configs: Vec<WereWolfRoleConfig>,
     ) -> Self {
         Self {
-            sm: sm::RoundSM::new(mods, message_id, channel, guild_id).await,
+            sm: sm::RoundSM::new(mods, message_id, channel, guild_id, role_configs).await,
         }
     }
 

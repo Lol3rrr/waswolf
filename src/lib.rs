@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
 use serenity::{
@@ -17,16 +17,20 @@ use serenity::{
     Client,
 };
 
+pub const MOD_ROLE_NAME: &str = "Game Master";
+
 mod roles;
 mod rounds;
-use rounds::{Round, RoundsMap};
+use rounds::RoundsMap;
 
 mod reactions;
 pub use reactions::Reactions;
 
-use crate::rounds::BotContext;
-
 mod util;
+
+mod storage;
+
+mod commands;
 
 struct Rounds;
 impl TypeMapKey for Rounds {
@@ -38,15 +42,31 @@ impl TypeMapKey for RoleCount {
     type Value = Mutex<HashMap<MessageId, GuildId>>;
 }
 
+struct BotStorage;
+impl TypeMapKey for BotStorage {
+    type Value = storage::Storage;
+}
+
 /// The general Handler for the Bot
 struct Handler {
     /// The UserID of the Bot itself
     id: UserId,
 }
 
+impl Handler {
+    pub fn new(id: UserId) -> Self {
+        Self { id }
+    }
+}
+
 fn get_rounds(map: &TypeMap) -> &RoundsMap {
     map.get::<Rounds>()
         .expect("The shared Rounds Datastructure should always exist on a running Bot-Instance")
+}
+
+fn get_storage(map: &TypeMap) -> &storage::Storage {
+    map.get::<BotStorage>()
+        .expect("The Shared Storage Backend should always exist on a running Bot-Instance")
 }
 
 /// The Bot-Prefix used for recognizing Commands
@@ -154,8 +174,9 @@ impl EventHandler for Handler {
         round.handle_remove_react(&ctx, removed_reaction).await;
     }
 
+    #[tracing::instrument(skip(self, ctx, new_message))]
     async fn message(&self, ctx: Context, new_message: Message) {
-        let mut ref_message = match &new_message.referenced_message {
+        let ref_message = match &new_message.referenced_message {
             Some(m) => m.clone(),
             None => return,
         };
@@ -181,14 +202,7 @@ impl EventHandler for Handler {
         if let Err(e) = round.role_reply(self.id, &ctx, reply_id, new_message).await {
             tracing::error!("{:?}", e);
 
-            if let Err(e) = ref_message
-                .edit(&ctx.http, |edit| {
-                    edit.content("Error setting up the Moderator Channel")
-                })
-                .await
-            {
-                tracing::error!("Updating Message with Error: {:?}", e);
-            };
+            round.update_msg(&ctx, &format!("{}", e)).await;
 
             {
                 let mut data = ctx.data.write().await;
@@ -218,116 +232,52 @@ impl EventHandler for Handler {
 }
 
 #[group]
-#[commands(help, werewolf)]
+#[commands(help, werewolf, add_role, remove_role, list_roles)]
 struct General;
 
 #[command]
 async fn werewolf(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
-    tracing::debug!("Received werewolf command");
-
-    let guild_id = match msg.guild_id {
-        Some(gid) => gid,
-        None => return Ok(()),
-    };
-    let channel_id = msg.channel_id;
-
-    let mut data = ctx.data.write().await;
-    let rounds = data
-        .get_mut::<Rounds>()
-        .expect("The shared Rounds-Datastructure should always exist in a running Instance");
-    if rounds.get(&guild_id).is_some() {
-        tracing::error!("There is already a Round running on the Guild");
-        if let Err(e) = channel_id
-            .say(
-                &ctx.http,
-                "There exists already a running Round in this Guild",
-            )
-            .await
-        {
-            tracing::error!("Sending Error-Message {:?}", e);
-        }
-
-        return Ok(());
-    }
-
-    tracing::info!("Starting new Round");
-
-    const MOD_ROLE_NAME: &str = "Game Master";
-    let mod_role = match util::roles::find_role(MOD_ROLE_NAME, guild_id, ctx.get_http()).await {
-        Ok(r) => r,
-        Err(util::roles::FindRoleError::NotFound) => {
-            tracing::error!("'Game Master'-Role does not exist on the Guild");
-            if let Err(e) = channel_id
-                .send_message(ctx.get_http(), |m| {
-                    m.content("Could not start a new Round as it could not find a Role with the Name 'Game Master'")
-                })
-                .await
-            {
-                tracing::error!("Sending Discord error message: {:?}", e);
-            }
-
-            return Ok(());
-        }
-        Err(e) => {
-            tracing::error!("Error getting 'Game Master'-Role for Guild: {:?}", e);
-            return Ok(());
-        }
-    };
-    let mods = util::roles::role_users(mod_role, guild_id, ctx.get_http()).await;
-
-    let entry_msg = format!(
-        "Creating new Round.\nReact with:\n{}: Enter as a Player\n{}: Start the Round itself",
-        Reactions::Entry,
-        Reactions::Confirm
-    );
-
-    let result = match channel_id
-        .send_message(&ctx.http, |m| {
-            m.content(entry_msg)
-                .reactions(&[Reactions::Entry, Reactions::Confirm])
-        })
-        .await
-    {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::error!("Sending New-Round Message: {:?}", e);
-            return Ok(());
-        }
-    };
-    let msg_id = result.id;
-
-    rounds.insert(
-        guild_id,
-        Mutex::new(Round::new(mods, msg_id, result.channel_id, guild_id).await),
-    );
-
-    Ok(())
+    commands::werewolf(ctx, msg).await
 }
 
 #[command]
 async fn help(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
-    tracing::debug!("Received help Command");
+    commands::help(ctx, msg).await
+}
 
-    if let Err(e) = msg
-        .channel_id
-        .send_message(&ctx.http, |m| {
-            util::help::generate_help_message(m);
-            m
-        })
-        .await
-    {
-        tracing::error!("Sending Help-Message: {:?}", e);
+#[command]
+#[aliases("list-roles")]
+async fn list_roles(ctx: &Context, msg: &Message, _args: Args) -> CommandResult {
+    commands::list_roles(ctx, msg).await
+}
+
+fn parse_bool(raw: &str) -> Option<bool> {
+    match raw {
+        "true" | "yes" | "y" => Some(true),
+        "false" | "no" | "n" => Some(false),
+        _ => None,
     }
+}
 
-    Ok(())
+#[command]
+#[aliases("add-role")]
+async fn add_role(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
+    commands::add_role(ctx, msg, args).await
+}
+
+#[command]
+#[aliases("remove-role")]
+async fn remove_role(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
+    commands::remove_role(ctx, msg, args).await
 }
 
 /// Initialize the Client instance with all the needed Data
 /// to function properly
-async fn init_bot_data(client: &Client) {
+async fn init_bot_data(client: &Client, bot_storage: storage::Storage) {
     let mut c_data = client.data.write().await;
     c_data.insert::<Rounds>(RoundsMap::new());
     c_data.insert::<RoleCount>(Mutex::new(HashMap::default()));
+    c_data.insert::<BotStorage>(bot_storage);
 }
 
 /// Actually starts the Bot itself
@@ -340,15 +290,20 @@ pub async fn start(token: String) {
         .group(&GENERAL_GROUP);
 
     // Create the HTTP-Instance for the Bot to use
-    let http = Http::new_with_token(&token);
+    let http = Arc::new(Http::new_with_token(&token));
     let bot_id = {
         let user = http.get_current_user().await.unwrap();
         user.id
     };
 
+    let discord_storage = storage::discord::DiscordStorage::new(http);
+    let bot_storage = storage::Storage::new(discord_storage);
+
+    let handler = Handler::new(bot_id);
+
     // Actually create the Bot instance with all the needed Settings/Configs
     let mut client = Client::builder(token)
-        .event_handler(Handler { id: bot_id })
+        .event_handler(handler)
         .framework(framework)
         .intents(
             GatewayIntents::GUILD_MEMBERS
@@ -360,7 +315,7 @@ pub async fn start(token: String) {
         .unwrap();
 
     // Initialize the Bots inner State
-    init_bot_data(&client).await;
+    init_bot_data(&client, bot_storage).await;
 
     // Actually run the Bot
     if let Err(e) = client.start().await {

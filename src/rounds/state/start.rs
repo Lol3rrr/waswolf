@@ -7,7 +7,7 @@ use serenity::model::{
 };
 
 use crate::{
-    roles::{self, WereWolfRole},
+    roles::{self, WereWolfRoleInstance},
     rounds::BotContext,
 };
 
@@ -32,7 +32,7 @@ pub enum StartError {
     SettingUpCategory,
     SettingUpChannels(SetupChannelError),
     SettingUpModeratorChannel,
-    DistributingRoles,
+    DistributingRoles(roles::DistributeError),
     AssignRolePermissions,
 }
 
@@ -43,7 +43,13 @@ impl Display for StartError {
             Self::SettingUpCategory => write!(f, "Setting up Category for active Roles"),
             Self::SettingUpChannels(_) => write!(f, "Setting up Channels for active Roles"),
             Self::SettingUpModeratorChannel => write!(f, "Setting up Channel for the Moderators"),
-            Self::DistributingRoles => write!(f, "Distributing Roles to Players"),
+            Self::DistributingRoles(err) => match err {
+                roles::DistributeError::MismatchedCount {
+                    available_roles,
+                    player_count,
+                } => write!(f, "Distributing Roles to Players, configured {} Roles to assign but has {} Players", available_roles, player_count),
+                roles::DistributeError::TooManyMaskedRoles { masking_roles, normal_roles } => write!(f, "Distributing Roles to Players, configured {} Roles that mask/need another Role, but only configured {} 'normal' Roles", masking_roles, normal_roles),
+            },
             Self::AssignRolePermissions => {
                 write!(f, "Assigning Role-Permissions to Users and Channels")
             }
@@ -64,7 +70,7 @@ pub async fn start(
     ctx: &dyn BotContext,
 ) -> Result<
     (
-        BTreeMap<UserId, WereWolfRole>,
+        BTreeMap<UserId, WereWolfRoleInstance>,
         ChannelId,
         BTreeMap<String, ChannelId>,
     ),
@@ -87,6 +93,12 @@ pub async fn start(
             kind: PermissionOverwriteType::Role(dead_role_id),
         },
     ];
+
+    let participants = roles::distribute_roles(
+        source.state.participants.clone(),
+        source.state.roles.clone(),
+    )
+    .map_err(StartError::DistributingRoles)?;
 
     let guild_channel = source
         .guild
@@ -121,12 +133,6 @@ pub async fn start(
     )
     .await
     .map_err(|_| StartError::SettingUpModeratorChannel)?;
-
-    let participants = roles::distribute_roles(
-        source.state.participants.clone(),
-        source.state.roles.clone(),
-    )
-    .map_err(|_| StartError::DistributingRoles)?;
 
     // Set the Permissions for the Users and their corresponding Role-Channels
     for (user_id, role) in participants.iter() {

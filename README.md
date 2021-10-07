@@ -21,6 +21,8 @@ bot
 * Manage Roles using a Chat
 * Manage "Szenarios" using Chat
 
+* Allow for users to custmoize the Channels a Role can access (`add-role {name} {emoji} {multi-player} {masks roles} {list of extra Roles channels}`)
+
 ### Testing
 Add automated End-to-End testing by writing a small second bot which will execute
 the Commands and all that and check for the correct Reactions by the actual Bot
