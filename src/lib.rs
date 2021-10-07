@@ -17,6 +17,8 @@ use serenity::{
     Client,
 };
 
+pub const MOD_ROLE_NAME: &str = "Game Master";
+
 mod roles;
 mod rounds;
 use rounds::RoundsMap;

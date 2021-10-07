@@ -5,7 +5,7 @@ use serenity::{
     model::channel::Message,
 };
 
-use crate::{get_storage, parse_bool, roles::WereWolfRoleConfig, util};
+use crate::{get_storage, parse_bool, roles::WereWolfRoleConfig, util, MOD_ROLE_NAME};
 
 fn missing_part(missing_part: &str) -> String {
     format!("```
@@ -26,6 +26,33 @@ pub async fn add_role(ctx: &Context, msg: &Message, mut args: Args) -> CommandRe
 
     let channel_id = msg.channel_id;
     let guild_id = msg.guild_id.unwrap();
+
+    let server_mods = match util::mods::load_mods(&ctx, guild_id, MOD_ROLE_NAME).await {
+        Ok(m) => m,
+        Err(e) => {
+            tracing::error!("Loading Mods: {:?}", e);
+
+            util::msgs::send_content(channel_id, ctx.http(), "Could not load Mods for the Server")
+                .await;
+
+            return Ok(());
+        }
+    };
+    if !server_mods.contains(&msg.author.id) {
+        tracing::error!("Non Mod User executed the Command");
+
+        util::msgs::send_content(
+            channel_id,
+            ctx.http(),
+            &format!(
+                "Only Users with the '{}'-Role can use this Command",
+                MOD_ROLE_NAME
+            ),
+        )
+        .await;
+
+        return Ok(());
+    }
 
     let mut args_iter = args.iter::<String>().map(|m| m.unwrap());
 

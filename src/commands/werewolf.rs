@@ -6,9 +6,9 @@ use serenity::{
     prelude::Mutex,
 };
 
-use crate::{get_storage, roles::WereWolfRoleConfig, rounds::Round, util, Reactions, Rounds};
-
-const MOD_ROLE_NAME: &str = "Game Master";
+use crate::{
+    get_storage, roles::WereWolfRoleConfig, rounds::Round, util, Reactions, Rounds, MOD_ROLE_NAME,
+};
 
 async fn get_role_configs(
     ctx: &Context,
