@@ -32,6 +32,8 @@ mod storage;
 
 mod commands;
 
+pub mod metrics;
+
 struct Rounds;
 impl TypeMapKey for Rounds {
     type Value = RoundsMap;
@@ -51,11 +53,22 @@ impl TypeMapKey for BotStorage {
 struct Handler {
     /// The UserID of the Bot itself
     id: UserId,
+
+    ready_metric: prometheus::IntGauge,
 }
 
 impl Handler {
-    pub fn new(id: UserId) -> Self {
-        Self { id }
+    pub fn new(id: UserId, registry: &prometheus::Registry) -> Self {
+        let ready_metric = prometheus::IntGauge::with_opts(prometheus::Opts::new(
+            "ready",
+            "Whether or not the Bot is ready",
+        ))
+        .unwrap();
+        ready_metric.set(0);
+
+        registry.register(Box::new(ready_metric.clone())).unwrap();
+
+        Self { id, ready_metric }
     }
 }
 
@@ -83,6 +96,8 @@ impl EventHandler for Handler {
         _data_about_bot: serenity::model::prelude::Ready,
     ) {
         ctx.set_activity(Activity::listening(PREFIX)).await;
+
+        self.ready_metric.set(1);
 
         tracing::info!("Bot is ready");
     }
@@ -299,7 +314,7 @@ pub async fn start(token: String) {
     let discord_storage = storage::discord::DiscordStorage::new(http);
     let bot_storage = storage::Storage::new(discord_storage);
 
-    let handler = Handler::new(bot_id);
+    let handler = Handler::new(bot_id, &metrics::REGISTRY);
 
     // Actually create the Bot instance with all the needed Settings/Configs
     let mut client = Client::builder(token)

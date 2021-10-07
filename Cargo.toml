@@ -11,6 +11,11 @@ serenity = { version = "0.10", default_features = false, features = ["builder", 
 async-trait = { version = "0.1" }
 rand = { version = "0.8" }
 
+# Metrics related stuff
+lazy_static = { version = "1.4" }
+prometheus = { version = "0.13.0" }
+hyper = { version = "0.14", features = ["server"] }
+
 # Serialization
 serde = { version = "1.0" }
 serde_json = { version = "1.0" }
