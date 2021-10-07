@@ -7,7 +7,8 @@ use serenity::{
 };
 
 use crate::{
-    get_storage, roles::WereWolfRoleConfig, rounds::Round, util, Reactions, Rounds, MOD_ROLE_NAME,
+    get_storage, roles::WereWolfRoleConfig, rounds::Round, storage::StorageBackend, util,
+    Reactions, Rounds, MOD_ROLE_NAME,
 };
 
 async fn get_role_configs(
@@ -17,7 +18,7 @@ async fn get_role_configs(
     let data = ctx.data.read().await;
     let storage = get_storage(&data);
 
-    storage.backend().load_roles(guild_id).await
+    storage.load_roles(guild_id).await
 }
 
 #[tracing::instrument(skip(ctx, msg))]
