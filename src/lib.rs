@@ -290,7 +290,7 @@ async fn remove_role(ctx: &Context, msg: &Message, args: Args) -> CommandResult 
 /// to function properly
 async fn init_bot_data(client: &Client, bot_storage: storage::Storage) {
     let mut c_data = client.data.write().await;
-    c_data.insert::<Rounds>(RoundsMap::new());
+    c_data.insert::<Rounds>(RoundsMap::new(&metrics::REGISTRY));
     c_data.insert::<RoleCount>(Mutex::new(HashMap::default()));
     c_data.insert::<BotStorage>(bot_storage);
 }
