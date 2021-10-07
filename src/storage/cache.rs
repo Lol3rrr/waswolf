@@ -56,3 +56,83 @@ impl Cache {
         guild_roles.remove(index);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_cache() {
+        let cache = Cache::new();
+        drop(cache);
+    }
+
+    #[test]
+    fn get_empty() {
+        let cache = Cache::new();
+
+        let result = cache.get_roles(GuildId(13));
+
+        assert_eq!(None, result);
+    }
+
+    #[test]
+    fn populate_get() {
+        let cache = Cache::new();
+
+        let guild = GuildId(13);
+        let raw_input = vec![WereWolfRoleConfig::new("test", ":)", false, false, vec![])];
+
+        cache.populate(guild, raw_input.clone());
+
+        let loaded = cache.get_roles(guild);
+
+        assert_eq!(Some(raw_input), loaded);
+    }
+    #[test]
+    fn set_get() {
+        let cache = Cache::new();
+
+        let role = WereWolfRoleConfig::new("test", ":)", false, false, vec![]);
+        let expected = Some(vec![role.clone()]);
+
+        cache.set_role(GuildId(13), role.clone());
+
+        let result = cache.get_roles(GuildId(13));
+
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn remove_empty() {
+        let cache = Cache::new();
+
+        cache.remove_role(GuildId(13), "test");
+    }
+    #[test]
+    fn set_remove() {
+        let cache = Cache::new();
+
+        cache.set_role(
+            GuildId(13),
+            WereWolfRoleConfig::new("test", ":)", false, false, vec![]),
+        );
+
+        cache.remove_role(GuildId(13), "test");
+
+        assert_eq!(Some(vec![]), cache.get_roles(GuildId(13)));
+    }
+    #[test]
+    fn set_remove_different() {
+        let cache = Cache::new();
+
+        let role = WereWolfRoleConfig::new("test", ":)", false, false, vec![]);
+        let expected = Some(vec![role.clone()]);
+
+        cache.set_role(GuildId(13), role);
+
+        cache.remove_role(GuildId(13), "other");
+
+        assert_eq!(expected, cache.get_roles(GuildId(13)));
+    }
+}
