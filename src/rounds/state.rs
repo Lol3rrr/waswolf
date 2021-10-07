@@ -314,7 +314,7 @@ impl TryTransition<RoundState<RegisterUsers>> for RoundState<RegisterRoles> {
 
         let playerCount: usize = source.state.participants.len();
         if playerCount < 1 {
-            source.map_err(TransitionError::new("Cannot start the game with: no player"))?;
+            source.map_err(TransitionError::new("Cannot start the game with no player"))?;
         }else{
             let roles_msg = roles::get_roles_msg(&source.role_configs);
 
