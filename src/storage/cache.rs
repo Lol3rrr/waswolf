@@ -20,7 +20,7 @@ impl Cache {
     }
 
     pub fn get_roles(&self, guild_id: GuildId) -> Option<Vec<WereWolfRoleConfig>> {
-        self.roles.read().unwrap().get(&guild_id).map(|m| m.clone())
+        self.roles.read().unwrap().get(&guild_id).cloned()
     }
 
     pub fn set_role(&self, guild_id: GuildId, role: WereWolfRoleConfig) {

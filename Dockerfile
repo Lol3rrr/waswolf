@@ -19,4 +19,6 @@ COPY --from=builder /werewolf-bot/target/release/werewolf-bot ${APP}/werewolf-bo
 
 WORKDIR ${APP}
 
+EXPOSE 9100
+
 ENTRYPOINT ["./werewolf-bot"]

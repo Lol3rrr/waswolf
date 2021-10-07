@@ -1,6 +1,6 @@
 use std::env;
 
-use werewolf_bot::start;
+use werewolf_bot::{metrics, start};
 
 fn main() {
     let token = env::var("BOT_TOKEN").expect("Needs a Discord-Bot-Token to operate");
@@ -24,6 +24,10 @@ fn main() {
         .enable_all()
         .build()
         .unwrap();
+
+    let metrics_port = 9100;
+
+    runtime.spawn(metrics::run_metrics_endpoint(metrics_port));
 
     // Actually running the Bot
     runtime.block_on(start(token));

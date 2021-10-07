@@ -102,26 +102,47 @@ impl Round {
     }
 }
 
-pub struct RoundsMap(HashMap<GuildId, Mutex<Round>>);
+pub struct RoundsMap {
+    rounds: HashMap<GuildId, Mutex<Round>>,
+
+    running_rounds_metric: prometheus::IntGauge,
+}
+
 impl RoundsMap {
-    pub fn new() -> Self {
-        Self(HashMap::new())
+    pub fn new(registry: &prometheus::Registry) -> Self {
+        let running_metric = prometheus::IntGauge::with_opts(prometheus::Opts::new(
+            "rounds_running",
+            "The Number of currently running Rounds",
+        ))
+        .unwrap();
+        running_metric.set(0);
+
+        registry.register(Box::new(running_metric.clone())).unwrap();
+
+        Self {
+            rounds: HashMap::new(),
+            running_rounds_metric: running_metric,
+        }
     }
 
     pub fn get(&self, guild: &GuildId) -> Option<&Mutex<Round>> {
-        self.0.get(guild)
+        self.rounds.get(guild)
     }
     pub fn get_from_reaction(&self, msg: &Reaction) -> Option<&Mutex<Round>> {
         let guild_id = msg.guild_id?;
-        self.0.get(&guild_id)
+        self.get(&guild_id)
     }
 
     pub fn insert(&mut self, id: GuildId, data: Mutex<Round>) {
-        self.0.insert(id, data);
+        self.rounds.insert(id, data);
+
+        self.running_rounds_metric.set(self.rounds.len() as i64);
     }
 
     pub fn remove(&mut self, id: &GuildId) {
-        self.0.remove(id);
+        self.rounds.remove(id);
+
+        self.running_rounds_metric.set(self.rounds.len() as i64);
     }
     pub fn remove_from_reaction(&mut self, msg: &Reaction) {
         let guild_id = match msg.guild_id {
@@ -129,6 +150,6 @@ impl RoundsMap {
             None => return,
         };
 
-        self.0.remove(&guild_id);
+        self.remove(&guild_id);
     }
 }
