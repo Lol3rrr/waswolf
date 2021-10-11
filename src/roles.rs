@@ -1,6 +1,5 @@
 use std::fmt::Display;
 
-use rand::Rng;
 use serde::{Deserialize, Serialize};
 use serenity::model::channel::Message;
 
@@ -71,6 +70,7 @@ impl Ord for WereWolfRoleConfig {
 }
 
 impl WereWolfRoleConfig {
+    /// Creates a new Role-Config based on the given Data
     pub fn new<N, E>(
         name: N,
         emoji: E,
@@ -91,66 +91,69 @@ impl WereWolfRoleConfig {
         }
     }
 
+    /// The Name of the Role
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    /// The Emoji that is intended to be used for this
     pub fn emoji(&self) -> &str {
         &self.emoji
     }
 
+    /// Whether or not the Role can be assigned to multiple-Players
     pub fn multi_player(&self) -> bool {
         self.mutli_player
     }
 
+    /// Whether or not this Role can "mask"/"contain" another Role in an actual Round
     pub fn masks_role(&self) -> bool {
         self.masks_role
     }
 
-    pub fn to_instance<R>(
-        &self,
-        non_nested_roles: &mut Vec<WereWolfRoleConfig>,
-        rng: &mut R,
-    ) -> Option<WereWolfRoleInstance>
+    /// Creates an actual Role-Instance from this Config, will use the provided function to get
+    /// another Role if this Config needs/masks another Role
+    pub fn to_instance<F>(&self, get_masked: &mut F) -> WereWolfRoleInstance
     where
-        R: Rng,
+        F: FnMut() -> WereWolfRoleConfig,
     {
         if !self.masks_role {
-            return Some(WereWolfRoleInstance::new(
+            return WereWolfRoleInstance::new(
                 self.name.clone(),
                 None,
                 self.other_role_channels.clone(),
-            ));
+            );
         }
 
-        if non_nested_roles.is_empty() {
-            return None;
-        }
-        let index: usize = rng.gen_range(0..non_nested_roles.len());
+        let other_role = get_masked();
+        let other_instance = other_role.to_instance(get_masked);
 
-        let other_role = non_nested_roles.remove(index);
-        let other_instance = other_role.to_instance(non_nested_roles, rng).unwrap();
-
-        Some(WereWolfRoleInstance::new(
+        WereWolfRoleInstance::new(
             self.name.clone(),
             Some(Box::new(other_instance)),
             self.other_role_channels.clone(),
-        ))
+        )
     }
 
+    /// Gets the List of all Channel Names that this Role needs access to
     pub fn channels(&self) -> impl Iterator<Item = String> {
         std::iter::once(self.name.clone()).chain(self.other_role_channels.clone())
     }
 }
 
-#[derive(Debug, Clone)]
+/// An actual Instance of a Role, which is intended to be used for a running Round
+#[derive(Debug, Clone, PartialEq)]
 pub struct WereWolfRoleInstance {
+    /// The Name of the Role
     name: String,
+    /// The Role masked by this Role, if any
     masked_role: Option<Box<Self>>,
+    /// A List of extra Channels that this Role needs access to
     extra_channels: Vec<String>,
 }
 
 impl WereWolfRoleInstance {
+    /// Creates a new Role-Instace with the given Data
     fn new(name: String, masked_role: Option<Box<Self>>, extra_channels: Vec<String>) -> Self {
         Self {
             name,
@@ -159,6 +162,7 @@ impl WereWolfRoleInstance {
         }
     }
 
+    /// Gets the Channels that this Role Instance actually needs access to
     pub fn channels(&self) -> Vec<String> {
         let mut result = vec![self.name.clone()];
 
@@ -173,9 +177,11 @@ impl WereWolfRoleInstance {
         result
     }
 
+    /// The Name of the Role this instance is based upon
     pub fn name(&self) -> &str {
         &self.name
     }
+    /// The Role that is masked by this Role, if any
     pub fn masked_role(&self) -> Option<&Self> {
         match &self.masked_role {
             Some(r) => Some(&r),
@@ -221,6 +227,34 @@ mod tests {
         let expected = vec!["Test".to_string(), "Extra".to_string()];
 
         let result = instance.channels();
+
+        assert_eq!(expected, result);
+    }
+
+    #[test]
+    fn to_instance_not_masking() {
+        let config = WereWolfRoleConfig::new("root", "", false, false, Vec::new());
+        let expected = WereWolfRoleInstance::new(config.name().to_string(), None, Vec::new());
+
+        let result = config.to_instance(&mut || panic!("We dont want to mask another Role"));
+
+        assert_eq!(expected, result);
+    }
+    #[test]
+    fn to_instance_masking() {
+        let config = WereWolfRoleConfig::new("root", "", false, true, Vec::new());
+        let expected = WereWolfRoleInstance::new(
+            config.name().to_string(),
+            Some(Box::new(WereWolfRoleInstance::new(
+                "inner".to_string(),
+                None,
+                Vec::new(),
+            ))),
+            Vec::new(),
+        );
+
+        let result = config
+            .to_instance(&mut || WereWolfRoleConfig::new("inner", "", false, false, Vec::new()));
 
         assert_eq!(expected, result);
     }
