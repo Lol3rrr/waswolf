@@ -177,7 +177,12 @@ and reorganize the relevant Channels to prepare for the next Round.
                     .map_err(|_| StartError::SettingUpModeratorChannel)?;
                 let name = user.name;
 
-                tmp.push_str(&format!("{}: {:?}\n", name, role));
+                let role_name = match role.masked_role() {
+                    Some(other) => format!("{} ({})", role.name(), other.name()),
+                    None => format!("{}", role.name()),
+                };
+
+                tmp.push_str(&format!("{}: {}\n", name, role_name));
             }
 
             tmp

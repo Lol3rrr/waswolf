@@ -172,6 +172,16 @@ impl WereWolfRoleInstance {
 
         result
     }
+
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn masked_role(&self) -> Option<&Self> {
+        match &self.masked_role {
+            Some(r) => Some(&r),
+            None => None,
+        }
+    }
 }
 
 #[cfg(test)]
