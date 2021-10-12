@@ -142,7 +142,7 @@ pub async fn create(
                 return TransitionResult::Error(Arc::new(TransitionError::Serenity));
             }
 
-            TransitionResult::NextState(FirstTransition {
+            TransitionResult::Done(FirstTransition {
                 name: name.to_string(),
                 emoji,
                 author,
@@ -177,7 +177,7 @@ pub async fn create(
                 return TransitionResult::Error(Arc::new(TransitionError::Serenity));
             }
 
-            TransitionResult::NextState(SecondTransition {
+            TransitionResult::Done(SecondTransition {
                 name: state.name,
                 emoji: state.emoji,
                 multi_player,
@@ -214,7 +214,7 @@ pub async fn create(
                 return TransitionResult::Error(Arc::new(TransitionError::Serenity));
             }
 
-            TransitionResult::NextState(ThirdTransition {
+            TransitionResult::Done(ThirdTransition {
                 name: state.name,
                 emoji: state.emoji,
                 multi_player: state.multi_player,
@@ -272,7 +272,7 @@ pub async fn create(
                             tracing::error!("Updating Message with Error: {:?}", e);
                         }
 
-                        return TransitionResult::NextState(());
+                        return TransitionResult::Done(());
                     }
                     if r.iter().any(|c| c.emoji() == state.emoji.as_str()) {
                         let resp = format!("There already exists a Role with the Emoji: {}", state.emoji);
@@ -280,7 +280,7 @@ pub async fn create(
                             tracing::error!("Updating Message with Error: {:?}", e);
                         }
 
-                        return TransitionResult::NextState(());
+                        return TransitionResult::Done(());
                     }
                 }
 
@@ -307,7 +307,7 @@ pub async fn create(
                     }
                 };
 
-                TransitionResult::NextState(())
+                TransitionResult::Done(())
             }
             _ => TransitionResult::NoTransition,
         }

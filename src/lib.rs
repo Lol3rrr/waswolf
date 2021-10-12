@@ -146,7 +146,7 @@ impl EventHandler for Handler {
                         TransitionResult::NoTransition => {
                             tracing::info!("No Transition");
                         }
-                        TransitionResult::NextState(_) => {
+                        TransitionResult::Done(_) => {
                             tracing::info!("Next-State");
                         }
                         TransitionResult::Error(e) => {
@@ -261,7 +261,7 @@ impl EventHandler for Handler {
                         TransitionResult::NoTransition => {
                             tracing::info!("No Transition");
                         }
-                        TransitionResult::NextState(_) => {
+                        TransitionResult::Done(_) => {
                             tracing::info!("Next-State");
                         }
                         TransitionResult::Error(e) => {

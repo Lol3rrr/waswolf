@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use serenity::{
     http::Http,
     model::{
@@ -10,8 +9,6 @@ use serenity::{
 };
 
 use crate::storage::Storage;
-
-use super::Chained;
 
 #[derive(Debug, Clone)]
 pub enum TransitionError {
@@ -70,18 +67,5 @@ impl Context {
 impl Default for Context {
     fn default() -> Self {
         Self::new(None, None, None, GuildId(0))
-    }
-}
-
-#[async_trait]
-pub trait AsyncTransition<A, N> {
-    async fn transition(&mut self, context: Context, arguments: A) -> Arc<TransitionResult<N>>;
-
-    fn chain<Other, Output>(self, other: Other) -> Chained<Self, Other, A, N, Output>
-    where
-        Self: Sized,
-        Other: AsyncTransition<N, Output>,
-    {
-        Chained::new(self, other)
     }
 }
