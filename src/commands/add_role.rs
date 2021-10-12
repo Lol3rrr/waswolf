@@ -5,22 +5,18 @@ use serenity::{
     model::channel::Message,
 };
 
-use crate::{
-    get_storage, parse_bool, roles::WereWolfRoleConfig, storage::StorageBackend, util,
-    MOD_ROLE_NAME,
-};
+use crate::{util, GuildMessageStatemachines, MOD_ROLE_NAME};
+
+mod sm;
 
 fn missing_part(missing_part: &str) -> String {
-    format!("```
+    format!(
+        "```
 Missing '{}'
-Format: 'add-role {{name}} {{emoji}} {{mutli-player}} {{masks role}} {{extra Role Channels}}'
-Parts:
-    * 'name': The Name of the new Role
-    * 'emoji': The Emoji that will be used to select the Role
-    * 'multi-player': Whether or not the Role can be assigned to multiple Players in the same round
-    * 'masks role': Whether or not the Role 'hides' another Role at the beginning of the Round, like when a Player with this Role only gets their real Role later on
-    * 'extra Role Channels': A Comma seperated List of other Role-Chats that this Role should have access to
-```", missing_part)
+Format: 'add-role {{name}}'
+```",
+        missing_part
+    )
 }
 
 #[tracing::instrument(skip(ctx, msg, args))]
@@ -69,113 +65,15 @@ pub async fn add_role(ctx: &Context, msg: &Message, mut args: Args) -> CommandRe
         }
     };
 
-    let emoji = match args_iter.next() {
-        Some(e) => e,
-        None => {
-            let resp = missing_part("Emoji");
-            util::msgs::send_content(channel_id, ctx.http(), &resp).await;
-
-            return Ok(());
-        }
-    };
-
-    let multi_player = match args_iter.next() {
-        Some(raw_m) => match parse_bool(&raw_m.to_lowercase()) {
-            Some(v) => v,
-            None => {
-                let resp = format!(
-                    "```
-Invalid Value for 'Multi-Player':
-Expected one of 'true', 'yes', 'y', 'false', 'no', 'n'
-Got: '{}'
-```",
-                    raw_m
-                );
-                util::msgs::send_content(channel_id, ctx.http(), &resp).await;
-
-                return Ok(());
-            }
-        },
-        None => {
-            let resp = missing_part("Multi-Player");
-            util::msgs::send_content(channel_id, ctx.http(), &resp).await;
-
-            return Ok(());
-        }
-    };
-
-    let masks_role = match args_iter.next() {
-        Some(raw_m) => match parse_bool(&raw_m.to_lowercase()) {
-            Some(v) => v,
-            None => {
-                let resp = format!(
-                    "```
-Invalid Value for 'Masks Role':
-Expected one of 'true', 'yes', 'y', 'false', 'no', 'n'
-Got: '{}'
-```",
-                    raw_m
-                );
-                util::msgs::send_content(channel_id, ctx.http(), &resp).await;
-
-                return Ok(());
-            }
-        },
-        None => {
-            let resp = missing_part("Masks Role");
-            util::msgs::send_content(channel_id, ctx.http(), &resp).await;
-
-            return Ok(());
-        }
-    };
-
-    let other_channels = match args_iter.next() {
-        Some(raw) => raw.split(',').map(|p| p.to_string()).collect(),
-        None => Vec::new(),
-    };
+    let (sm_msg_id, sm) = sm::create(name.clone(), msg.author.id, channel_id, ctx)
+        .await
+        .unwrap();
 
     let data = ctx.data.read().await;
-    let storage = get_storage(&data);
+    let msg_states = data.get::<GuildMessageStatemachines>().unwrap();
+    let mut msg_states_lock = msg_states.lock().await;
 
-    if let Ok(r) = storage.load_roles(guild_id).await {
-        if r.iter().any(|c| c.name() == name.as_str()) {
-            let resp = format!("There already exists a Role with the Name: {}", name);
-            util::msgs::send_content(channel_id, ctx.http(), &resp).await;
-
-            return Ok(());
-        }
-        if r.iter().any(|c| c.emoji() == emoji.as_str()) {
-            let resp = format!("There already exists a Role with the Emoji: {}", emoji);
-            util::msgs::send_content(channel_id, ctx.http(), &resp).await;
-
-            return Ok(());
-        }
-    }
-
-    let new_config = WereWolfRoleConfig::new(name, emoji, multi_player, masks_role, other_channels);
-
-    match storage.set_role(guild_id, new_config).await {
-        Ok(_) => {
-            tracing::debug!("Created new Role");
-
-            if let Err(e) = channel_id
-                .send_message(ctx.http(), |m| m.content("Successfully added the Role"))
-                .await
-            {
-                tracing::error!("Sending Confirmation message: {:?}", e);
-            }
-        }
-        Err(e) => {
-            tracing::error!("Setting Role: {:?}", e);
-
-            if let Err(e) = channel_id
-                .send_message(ctx.http(), |m| m.content("Could not add the Role"))
-                .await
-            {
-                tracing::error!("Sending Error Message: {:?}", e);
-            }
-        }
-    };
+    msg_states_lock.insert(sm_msg_id, sm);
 
     Ok(())
 }

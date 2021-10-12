@@ -1,6 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
+use messages::{AsyncTransition, MessageStateMachine, TransitionResult};
 use serenity::{
     client::{bridge::gateway::GatewayIntents, Context, EventHandler},
     framework::standard::{
@@ -34,6 +35,8 @@ mod commands;
 
 pub mod metrics;
 
+pub mod messages;
+
 struct Rounds;
 impl TypeMapKey for Rounds {
     type Value = RoundsMap;
@@ -47,6 +50,11 @@ impl TypeMapKey for RoleCount {
 struct BotStorage;
 impl TypeMapKey for BotStorage {
     type Value = storage::Storage;
+}
+
+struct GuildMessageStatemachines;
+impl TypeMapKey for GuildMessageStatemachines {
+    type Value = Mutex<HashMap<MessageId, MessageStateMachine<(), ()>>>;
 }
 
 /// The general Handler for the Bot
@@ -115,6 +123,40 @@ impl EventHandler for Handler {
                 return;
             }
         };
+
+        {
+            let data = ctx.data.read().await;
+            let msg_sm = data.get::<GuildMessageStatemachines>().unwrap();
+            let storage = data.get::<BotStorage>().unwrap();
+            let mut msg_sm_lock = msg_sm.lock().await;
+
+            match msg_sm_lock.get_mut(&add_reaction.message_id) {
+                Some(s) => {
+                    let context = messages::Context::new(
+                        Some(ctx.http.clone()),
+                        Some(messages::Event::AddReaction {
+                            reaction: add_reaction.clone(),
+                        }),
+                        Some(storage.clone()),
+                        add_reaction.guild_id.unwrap(),
+                    );
+                    let t_result = s.transition(context, ()).await;
+
+                    match t_result.as_ref() {
+                        TransitionResult::NoTransition => {
+                            tracing::info!("No Transition");
+                        }
+                        TransitionResult::NextState(_) => {
+                            tracing::info!("Next-State");
+                        }
+                        TransitionResult::Error(e) => {
+                            tracing::error!("Error transitioning: {:?}", e);
+                        }
+                    };
+                }
+                None => {}
+            };
+        }
 
         // Get access to the Round itself for the current Guild
         let data = ctx.data.read().await;
@@ -196,6 +238,40 @@ impl EventHandler for Handler {
             None => return,
         };
         let reply_id = ref_message.id;
+
+        {
+            let data = ctx.data.read().await;
+            let msg_sm = data.get::<GuildMessageStatemachines>().unwrap();
+            let storage = data.get::<BotStorage>().unwrap();
+            let mut msg_sm_lock = msg_sm.lock().await;
+
+            match msg_sm_lock.get_mut(&reply_id) {
+                Some(s) => {
+                    let context = messages::Context::new(
+                        Some(ctx.http.clone()),
+                        Some(messages::Event::Reply {
+                            message: new_message.clone(),
+                        }),
+                        Some(storage.clone()),
+                        new_message.guild_id.unwrap(),
+                    );
+                    let t_result = s.transition(context, ()).await;
+
+                    match t_result.as_ref() {
+                        TransitionResult::NoTransition => {
+                            tracing::info!("No Transition");
+                        }
+                        TransitionResult::NextState(_) => {
+                            tracing::info!("Next-State");
+                        }
+                        TransitionResult::Error(e) => {
+                            tracing::error!("Error transitioning: {:?}", e);
+                        }
+                    };
+                }
+                None => {}
+            };
+        }
 
         let data = ctx.data.read().await;
         let role_count = data.get::<RoleCount>().expect("The shared Role-Count-Messages Datastructure should always exist in a running Instance");
@@ -293,6 +369,7 @@ async fn init_bot_data(client: &Client, bot_storage: storage::Storage) {
     c_data.insert::<Rounds>(RoundsMap::new(&metrics::REGISTRY));
     c_data.insert::<RoleCount>(Mutex::new(HashMap::default()));
     c_data.insert::<BotStorage>(bot_storage);
+    c_data.insert::<GuildMessageStatemachines>(Mutex::new(HashMap::default()));
 }
 
 /// Actually starts the Bot itself

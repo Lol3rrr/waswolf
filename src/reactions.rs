@@ -11,6 +11,8 @@ pub enum Reactions {
     Stop,
     NextPage,
     PreviousPage,
+    Yes,
+    No,
     Custom(String),
 }
 
@@ -23,6 +25,8 @@ impl Reactions {
             Self::Stop => "🛑",
             Self::NextPage => "👉",
             Self::PreviousPage => "👈",
+            Self::Yes => "🇾",
+            Self::No => "🇳",
             Self::Custom(val) => val,
         }
     }
@@ -47,6 +51,11 @@ impl From<&Reactions> for ReactionType {
 
 impl PartialEq<ReactionType> for Reactions {
     fn eq(&self, other: &ReactionType) -> bool {
+        other.unicode_eq(self.to_str())
+    }
+}
+impl PartialEq<&ReactionType> for Reactions {
+    fn eq(&self, other: &&ReactionType) -> bool {
         other.unicode_eq(self.to_str())
     }
 }
