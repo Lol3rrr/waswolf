@@ -65,11 +65,12 @@ pub async fn add_role(ctx: &Context, msg: &Message, mut args: Args) -> CommandRe
         }
     };
 
-    let (sm_msg_id, sm) = sm::create(name.clone(), msg.author.id, channel_id, ctx)
+    let sm = sm::create(name.clone(), msg.author.id, channel_id, ctx)
         .await
         .unwrap();
 
-    crate::SMMap.insert(sm_msg_id, serenity::prelude::Mutex::new(sm));
+    let sm_msg_id = sm.message_id();
+    crate::SMMAP.add(sm_msg_id, sm);
 
     Ok(())
 }

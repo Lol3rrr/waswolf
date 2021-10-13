@@ -1,23 +1,10 @@
 use serenity::{
-    client::Context,
-    framework::standard::CommandResult,
-    http::CacheHttp,
-    model::{channel::Message, id::GuildId},
+    client::Context, framework::standard::CommandResult, http::CacheHttp, model::channel::Message,
 };
 
-use crate::{get_storage, roles::WereWolfRoleConfig, storage::StorageBackend, util, MOD_ROLE_NAME};
+use crate::{util, MOD_ROLE_NAME};
 
 mod sm;
-
-async fn get_role_configs(
-    ctx: &Context,
-    guild_id: GuildId,
-) -> Result<Vec<WereWolfRoleConfig>, Box<dyn std::error::Error + Send>> {
-    let data = ctx.data.read().await;
-    let storage = get_storage(&data);
-
-    storage.load_roles(guild_id).await
-}
 
 #[tracing::instrument(skip(ctx, msg))]
 pub async fn werewolf(ctx: &Context, msg: &Message) -> CommandResult {
@@ -29,18 +16,17 @@ pub async fn werewolf(ctx: &Context, msg: &Message) -> CommandResult {
     };
     let channel_id = msg.channel_id;
 
-    let role_configs = match get_role_configs(ctx, guild_id).await {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::error!("Loading Roles: {:?}", e);
-            util::msgs::send_content(channel_id, ctx.http(), "Could not load Roles").await;
+    if crate::SMMAP.reserve_running_game(guild_id).await.is_err() {
+        tracing::error!("Attempted to start new Round in Guild with running Round");
+        util::msgs::send_content(
+            channel_id,
+            ctx.http(),
+            "There already exists an ongoing Round",
+        )
+        .await;
 
-            return Ok(());
-        }
-    };
-
-    // TODO
-    // Check if a round is already running
+        return Ok(());
+    }
 
     tracing::debug!("Starting new Round");
 
@@ -73,8 +59,14 @@ pub async fn werewolf(ctx: &Context, msg: &Message) -> CommandResult {
     let bot_id = ctx.http.get_current_user().await.unwrap().id;
 
     match sm::create(ctx, guild_id, channel_id, mods, bot_id).await {
-        Ok((sm_msg_id, round_sm)) => {
-            crate::SMMap.insert(sm_msg_id, serenity::prelude::Mutex::new(round_sm));
+        Ok(round_sm) => {
+            let sm_msg_id = round_sm.message_id();
+
+            crate::SMMAP.add(sm_msg_id, round_sm);
+            crate::SMMAP
+                .mark_running_game(guild_id, sm_msg_id)
+                .await
+                .unwrap();
         }
         Err(e) => {
             tracing::error!("Creating Round Config State-Machine: {:?}", e);

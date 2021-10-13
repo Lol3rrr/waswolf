@@ -97,13 +97,14 @@ pub async fn create(
     author: UserId,
     channel_id: ChannelId,
     ctx: &serenity::client::Context,
-) -> Result<(MessageId, MessageStateMachine<(), ()>), serenity::Error> {
+) -> Result<MessageStateMachine<(), ()>, serenity::Error> {
     let msg = channel_id
         .send_message(ctx.http(), |m| {
             m.content("React with an emoji to use for the Role")
         })
         .await?;
 
+    let guild_id = msg.guild_id.unwrap();
     let msg_id = msg.id;
 
     let sm = SingleState::new(move |context, _: ()| {
@@ -313,5 +314,5 @@ pub async fn create(
         }
     }));
 
-    Ok((msg_id, MessageStateMachine::new(sm)))
+    Ok(MessageStateMachine::new(guild_id, msg_id, sm))
 }

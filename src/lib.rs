@@ -1,8 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use lazy_static::lazy_static;
-use messages::{AsyncTransition, MessageStateMachine, TransitionResult};
 use serenity::{
     client::{bridge::gateway::GatewayIntents, Context, EventHandler},
     framework::standard::{
@@ -15,7 +14,7 @@ use serenity::{
         id::{GuildId, MessageId, UserId},
         prelude::Activity,
     },
-    prelude::{Mutex, TypeMap, TypeMapKey},
+    prelude::{TypeMap, TypeMapKey},
     Client,
 };
 
@@ -24,8 +23,7 @@ pub const MOD_ROLE_NAME: &str = "Game Master";
 pub const DEAD_ROLE_NAME: &str = "W-Dead";
 
 lazy_static! {
-    static ref SMMap: lockfree::map::Map<MessageId, Mutex<MessageStateMachine<(), ()>>> =
-        lockfree::map::Map::new();
+    static ref SMMAP: sms::StateMachineMap = sms::StateMachineMap::new();
     static ref NOTIFY_SM_QUEUE: notifier::NotifyQueue = notifier::NotifyQueue::new();
 }
 
@@ -47,11 +45,7 @@ mod commands;
 pub mod metrics;
 
 pub mod messages;
-
-struct RoleCount;
-impl TypeMapKey for RoleCount {
-    type Value = Mutex<HashMap<MessageId, GuildId>>;
-}
+pub mod sms;
 
 struct BotStorage;
 impl TypeMapKey for BotStorage {
@@ -87,11 +81,6 @@ impl Handler {
         storage: &Storage,
         event: messages::Event,
     ) {
-        let sm_mutex = match SMMap.get(&message_id) {
-            Some(s) => s,
-            None => return,
-        };
-
         let context = messages::Context::new(
             Some(http.clone()),
             Some(event),
@@ -99,18 +88,7 @@ impl Handler {
             guild_id,
         );
 
-        let mut sm = sm_mutex.val().lock().await;
-        match sm.transition(context, ()).await.as_ref() {
-            TransitionResult::NoTransition => {
-                tracing::debug!("No Transition occured");
-            }
-            TransitionResult::Done(_) => {
-                tracing::debug!("StateMachine is done");
-            }
-            TransitionResult::Error(e) => {
-                tracing::error!("Transitioning: {:?}", e);
-            }
-        };
+        SMMAP.update(message_id, context).await;
     }
 }
 
@@ -270,7 +248,6 @@ async fn init_bot_data(client: &Client, http: Arc<Http>, bot_storage: storage::S
     notifier::run_notifier(http, bot_storage.clone()).await;
 
     let mut c_data = client.data.write().await;
-    c_data.insert::<RoleCount>(Mutex::new(HashMap::default()));
     c_data.insert::<BotStorage>(bot_storage);
 }
 

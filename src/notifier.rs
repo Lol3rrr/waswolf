@@ -50,13 +50,6 @@ async fn background_notifier(
             }
         };
 
-        let sm_entry = match crate::SMMap.get(&msg_id) {
-            Some(s) => s,
-            None => {
-                continue;
-            }
-        };
-
         let context = Context::new(
             Some(http.clone()),
             Some(Event::Notify),
@@ -64,24 +57,11 @@ async fn background_notifier(
             guild_id,
         );
 
-        let sm_lock = sm_entry.val();
-        let mut sm = match sm_lock.try_lock() {
-            Ok(s) => s,
+        match crate::SMMAP.try_lock_update(msg_id, context).await {
+            Ok(_) => {}
             Err(_) => {
                 crate::NOTIFY_SM_QUEUE.notify(msg_id, guild_id);
                 continue;
-            }
-        };
-
-        match sm.transition(context, ()).await.as_ref() {
-            TransitionResult::NoTransition => {
-                tracing::debug!("No Transition");
-            }
-            TransitionResult::Done(_) => {
-                tracing::debug!("Transition Done");
-            }
-            TransitionResult::Error(e) => {
-                tracing::error!("Error Transitioning: {:?}", e);
             }
         };
     }

@@ -175,8 +175,9 @@ impl GeneralWerewolfState<RoleCounts> {
 
         for role in previous.inner.selected_roles {
             if role.multi_player() {
-                let (msg_id, tmp_sm) = create_role_sm(
+                let tmp_sm = create_role_sm(
                     http,
+                    previous.message.guild_id,
                     channel_id,
                     previous.message.message_id,
                     previous.message.guild_id,
@@ -186,7 +187,8 @@ impl GeneralWerewolfState<RoleCounts> {
                 )
                 .await?;
 
-                crate::SMMap.insert(msg_id, serenity::prelude::Mutex::new(tmp_sm));
+                let msg_id = tmp_sm.message_id();
+                crate::SMMAP.add(msg_id, tmp_sm);
                 role_messages.insert(role);
             } else {
                 roles.insert(role, 1);
@@ -327,7 +329,7 @@ pub async fn create(
     channel_id: ChannelId,
     mods: BTreeSet<UserId>,
     bot_user_id: UserId,
-) -> Result<(MessageId, MessageStateMachine<(), ()>), serenity::Error> {
+) -> Result<MessageStateMachine<(), ()>, serenity::Error> {
     let entry_content = format!(
         "Starting new Round\n{}: Enter as Player\n{}: Start the Round (mods only)",
         Reactions::Entry,
@@ -578,7 +580,7 @@ pub async fn create(
         },
     ));
 
-    Ok((entry_msg.id, MessageStateMachine::new(sm)))
+    Ok(MessageStateMachine::new(guild_id, entry_msg.id, sm))
 }
 
 #[derive(Debug)]
@@ -594,13 +596,14 @@ struct RoleCountState {
 
 async fn create_role_sm(
     http: &Http,
+    guild_id: GuildId,
     channel_id: ChannelId,
     round_msg_id: MessageId,
     round_guild_id: GuildId,
     round_mods: BTreeSet<UserId>,
     role: WereWolfRoleConfig,
     count_queue: Arc<crossbeam::queue::SegQueue<(WereWolfRoleConfig, usize)>>,
-) -> Result<(MessageId, MessageStateMachine<(), ()>), serenity::Error> {
+) -> Result<MessageStateMachine<(), ()>, serenity::Error> {
     let msg_content = format!(
         "Reply with the Number of Players that should be assigned to the '{}'-Role",
         role.name()
@@ -658,5 +661,5 @@ async fn create_role_sm(
         },
     );
 
-    Ok((message_id, MessageStateMachine::new(sm)))
+    Ok(MessageStateMachine::new(guild_id, message_id, sm))
 }
