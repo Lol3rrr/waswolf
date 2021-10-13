@@ -16,20 +16,6 @@ pub async fn werewolf(ctx: &Context, msg: &Message) -> CommandResult {
     };
     let channel_id = msg.channel_id;
 
-    if crate::SMMAP.reserve_running_game(guild_id).await.is_err() {
-        tracing::error!("Attempted to start new Round in Guild with running Round");
-        util::msgs::send_content(
-            channel_id,
-            ctx.http(),
-            "There already exists an ongoing Round",
-        )
-        .await;
-
-        return Ok(());
-    }
-
-    tracing::debug!("Starting new Round");
-
     let mod_role = match util::roles::find_role(MOD_ROLE_NAME, guild_id, ctx.http()).await {
         Ok(r) => r,
         Err(util::roles::FindRoleError::NotFound) => {
@@ -54,7 +40,31 @@ pub async fn werewolf(ctx: &Context, msg: &Message) -> CommandResult {
     };
     let mods = util::roles::role_users(mod_role, guild_id, ctx.http()).await;
 
-    tracing::debug!("Started new Round");
+    if !mods.contains(&msg.author.id) {
+        tracing::error!("Non Mod attempted to start Round");
+        util::msgs::send_content(
+            channel_id,
+            ctx.http(),
+            "Only Moderators/Game Masters can start a new Round",
+        )
+        .await;
+
+        return Ok(());
+    }
+
+    if crate::SMMAP.reserve_running_game(guild_id).await.is_err() {
+        tracing::error!("Attempted to start new Round in Guild with running Round");
+        util::msgs::send_content(
+            channel_id,
+            ctx.http(),
+            "There already exists an ongoing Round",
+        )
+        .await;
+
+        return Ok(());
+    }
+
+    tracing::debug!("Starting new Round");
 
     let bot_id = ctx.http.get_current_user().await.unwrap().id;
 
