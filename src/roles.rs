@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use serenity::model::channel::Message;
 
 mod cfg_reactions;
+pub use cfg_reactions::reactions;
 
 mod roles_msg;
 pub use roles_msg::get_roles_msg;

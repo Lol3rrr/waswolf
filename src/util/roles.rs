@@ -54,3 +54,13 @@ pub async fn role_users(role: RoleId, guild: GuildId, http: &Http) -> BTreeSet<U
 
     result
 }
+
+pub async fn get_everyone_role(guild: GuildId, http: &Http) -> Result<RoleId, FindRoleError> {
+    let roles = guild.roles(http).await?;
+
+    Ok(*roles
+        .iter()
+        .min_by(|(_, x), (_, y)| x.position.cmp(&y.position))
+        .expect("There is always at least the @everyone Role")
+        .0)
+}

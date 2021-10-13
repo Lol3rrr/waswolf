@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::{
+    fmt::{Debug, Display},
+    sync::Arc,
+};
 
 use serenity::{
     http::Http,
@@ -10,21 +13,46 @@ use serenity::{
 
 use crate::storage::Storage;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum TransitionError {
     Serenity,
+    Generic(Arc<dyn Display + Send + Sync + 'static>),
+    WithReason { reason: String },
 }
 
-#[derive(Debug, Clone)]
-pub enum TransitionResult<N> {
-    NoTransition,
-    NextState(N),
-    Error(Arc<TransitionError>),
+impl Debug for TransitionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Serenity => write!(f, "TransitionError::Serenity"),
+            Self::Generic(e) => write!(f, "TransitionError::Generic {{ {} }}", e),
+            Self::WithReason { reason } => {
+                write!(f, "TransitionError::WithReason {{ reason: {:?} }}", reason)
+            }
+        }
+    }
+}
+
+impl Display for TransitionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Serenity => write!(f, "Interacting with Discord"),
+            Self::Generic(e) => Display::fmt(e, f),
+            Self::WithReason { reason } => write!(f, "{}", reason),
+        }
+    }
+}
+
+impl TransitionError {
+    pub fn arced(self) -> Arc<Self> {
+        Arc::new(self)
+    }
 }
 
 #[derive(Debug)]
 pub enum Event {
+    Notify,
     AddReaction { reaction: Reaction },
+    RemoveReaction { reaction: Reaction },
     Reply { message: Message },
 }
 

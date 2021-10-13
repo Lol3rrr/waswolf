@@ -5,7 +5,7 @@ use serenity::{
     model::channel::Message,
 };
 
-use crate::{util, GuildMessageStatemachines, MOD_ROLE_NAME};
+use crate::{util, MOD_ROLE_NAME};
 
 mod sm;
 
@@ -69,11 +69,7 @@ pub async fn add_role(ctx: &Context, msg: &Message, mut args: Args) -> CommandRe
         .await
         .unwrap();
 
-    let data = ctx.data.read().await;
-    let msg_states = data.get::<GuildMessageStatemachines>().unwrap();
-    let mut msg_states_lock = msg_states.lock().await;
-
-    msg_states_lock.insert(sm_msg_id, sm);
+    crate::SMMap.insert(sm_msg_id, serenity::prelude::Mutex::new(sm));
 
     Ok(())
 }

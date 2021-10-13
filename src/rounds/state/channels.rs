@@ -24,7 +24,7 @@ pub enum GetChannelError {
 /// Either way the given Permissions are applied to the Channel.
 async fn get_channel(
     channel_name: &str,
-    ctx: &dyn BotContext,
+    ctx: &Http,
     guild_id: &GuildId,
     guild_channel: &HashMap<ChannelId, GuildChannel>,
     default_permissions: &[PermissionOverwrite],
@@ -36,7 +36,7 @@ async fn get_channel(
         Some((id, _)) => {
             // Deny everyone access to the channel
             for permission in default_permissions.iter() {
-                id.create_permission(ctx.get_http(), permission)
+                id.create_permission(ctx, permission)
                     .await
                     .map_err(|_| GetChannelError::UpdatingPermissions)?;
             }
@@ -45,7 +45,7 @@ async fn get_channel(
         }
         None => {
             guild_id
-                .create_channel(ctx.get_http(), |c| {
+                .create_channel(ctx, |c| {
                     c.name(channel_name)
                         .kind(ChannelType::Text)
                         .permissions(default_permissions.to_vec())
@@ -102,26 +102,26 @@ const ACTIVE_CATEGORY_NAME: &str = "W-Active";
 const INACTIVE_CATEGORY_NAME: &str = "W-Inactive";
 
 pub async fn setup_active_category(
-    ctx: &dyn BotContext,
+    ctx: &Http,
     guild: &GuildId,
     guild_channel: &HashMap<ChannelId, GuildChannel>,
 ) -> Result<ChannelId, GetCategoryError> {
     get_category(
         &ACTIVE_CATEGORY_NAME.to_lowercase(),
-        ctx.get_http(),
+        ctx,
         guild,
         guild_channel,
     )
     .await
 }
 pub async fn setup_inactive_category(
-    ctx: &dyn BotContext,
+    ctx: &Http,
     guild: &GuildId,
     guild_channel: &HashMap<ChannelId, GuildChannel>,
 ) -> Result<ChannelId, GetCategoryError> {
     get_category(
         &INACTIVE_CATEGORY_NAME.to_lowercase(),
-        ctx.get_http(),
+        ctx,
         guild,
         guild_channel,
     )
@@ -148,7 +148,7 @@ async fn setup_channel<I>(
     category_id: ChannelId,
     default_permissions: &[PermissionOverwrite],
     extra_users: I,
-    ctx: &dyn BotContext,
+    ctx: &Http,
 ) -> Result<ChannelId, SetupChannelError>
 where
     I: Iterator<Item = UserId>,
@@ -165,14 +165,14 @@ where
     .await?;
 
     channel_id
-        .edit(ctx.get_http(), |c| c.category(category_id))
+        .edit(ctx, |c| c.category(category_id))
         .await
         .map_err(|_| SetupChannelError::MoveChannel)?;
 
     for user in extra_users {
         let access_permissions = channel_access_permissions(user);
         channel_id
-            .create_permission(ctx.get_http(), &access_permissions)
+            .create_permission(ctx, &access_permissions)
             .await
             .map_err(|_| SetupChannelError::UpdatingChannelPermissions)?;
     }
@@ -186,7 +186,7 @@ pub async fn setup_role_channels(
     guild: GuildId,
     guild_channel: &HashMap<ChannelId, GuildChannel>,
     category_id: &ChannelId,
-    ctx: &dyn BotContext,
+    ctx: &Http,
     moderators: &BTreeSet<UserId>,
 ) -> Result<BTreeMap<String, ChannelId>, SetupChannelError> {
     let mut role_channel: BTreeMap<String, ChannelId> = BTreeMap::new();
@@ -224,7 +224,7 @@ pub async fn setup_moderator_channel(
     guild: GuildId,
     guild_channel: &HashMap<ChannelId, GuildChannel>,
     category_id: &ChannelId,
-    ctx: &dyn BotContext,
+    ctx: &Http,
     moderators: &BTreeSet<UserId>,
 ) -> Result<ChannelId, SetupChannelError> {
     setup_channel(

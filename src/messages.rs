@@ -7,6 +7,10 @@ use async_trait::async_trait;
 pub type SingleState<S, A, F, O> = statemachines::Next<A, O, Context, Arc<TransitionError>, S, F>;
 pub type Chained<F, S, I, M, O> =
     statemachines::Chained<F, S, I, M, O, Arc<TransitionError>, Context>;
+pub type WithState<S, F, I, O, STATE> =
+    statemachines::WithState<I, O, STATE, Context, Arc<TransitionError>, S, F>;
+pub type WithLazyState<S, F, I, O, STATE, INIT> =
+    statemachines::WithLazyState<I, O, STATE, Context, Arc<TransitionError>, S, F, INIT>;
 
 mod traits;
 pub use traits::{Context, Event, TransitionError};
