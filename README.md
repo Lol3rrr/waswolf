@@ -12,17 +12,3 @@ Running the latest Version of the Bot:
 268446800
 ## Scope
 bot
-
-## Changes
-* Easier addition and modification of roles
-* Change Channel-Names for the Bot
-
-* Szenarios: A Set of Roles to use for a Game
-* Manage Roles using a Chat
-* Manage "Szenarios" using Chat
-
-* Allow for users to custmoize the Channels a Role can access (`add-role {name} {emoji} {multi-player} {masks roles} {list of extra Roles channels}`)
-
-### Testing
-Add automated End-to-End testing by writing a small second bot which will execute
-the Commands and all that and check for the correct Reactions by the actual Bot

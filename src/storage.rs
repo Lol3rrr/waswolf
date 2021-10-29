@@ -34,6 +34,7 @@ pub trait StorageBackend {
     ) -> Result<(), Box<dyn Error + Send>>;
 }
 
+#[derive(Clone)]
 pub struct Storage {
     backend: Arc<dyn StorageBackend + Send + Sync>,
     cache: Arc<cache::Cache>,

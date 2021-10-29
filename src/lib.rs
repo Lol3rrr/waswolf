@@ -1,6 +1,7 @@
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use async_trait::async_trait;
+use lazy_static::lazy_static;
 use serenity::{
     client::{bridge::gateway::GatewayIntents, Context, EventHandler},
     framework::standard::{
@@ -13,18 +14,27 @@ use serenity::{
         id::{GuildId, MessageId, UserId},
         prelude::Activity,
     },
-    prelude::{Mutex, TypeMap, TypeMapKey},
+    prelude::{TypeMap, TypeMapKey},
     Client,
 };
 
 pub const MOD_ROLE_NAME: &str = "Game Master";
+/// The Name of the Role used for Dead-Players
+pub const DEAD_ROLE_NAME: &str = "W-Dead";
+
+lazy_static! {
+    static ref SMMAP: sms::StateMachineMap = sms::StateMachineMap::new();
+    static ref NOTIFY_SM_QUEUE: notifier::NotifyQueue = notifier::NotifyQueue::new();
+}
+
+mod notifier;
 
 mod roles;
 mod rounds;
-use rounds::RoundsMap;
 
 mod reactions;
 pub use reactions::Reactions;
+use storage::Storage;
 
 mod util;
 
@@ -34,15 +44,8 @@ mod commands;
 
 pub mod metrics;
 
-struct Rounds;
-impl TypeMapKey for Rounds {
-    type Value = RoundsMap;
-}
-
-struct RoleCount;
-impl TypeMapKey for RoleCount {
-    type Value = Mutex<HashMap<MessageId, GuildId>>;
-}
+pub mod messages;
+pub mod sms;
 
 struct BotStorage;
 impl TypeMapKey for BotStorage {
@@ -70,11 +73,23 @@ impl Handler {
 
         Self { id, ready_metric }
     }
-}
 
-fn get_rounds(map: &TypeMap) -> &RoundsMap {
-    map.get::<Rounds>()
-        .expect("The shared Rounds Datastructure should always exist on a running Bot-Instance")
+    async fn update_sm(
+        guild_id: GuildId,
+        message_id: MessageId,
+        http: &Arc<Http>,
+        storage: &Storage,
+        event: messages::Event,
+    ) {
+        let context = messages::Context::new(
+            Some(http.clone()),
+            Some(event),
+            Some(storage.clone()),
+            guild_id,
+        );
+
+        SMMAP.update(message_id, context).await;
+    }
 }
 
 fn get_storage(map: &TypeMap) -> &storage::Storage {
@@ -116,47 +131,18 @@ impl EventHandler for Handler {
             }
         };
 
-        // Get access to the Round itself for the current Guild
         let data = ctx.data.read().await;
-        let rounds = get_rounds(&data);
-        let round_mutex = match rounds.get_from_reaction(&add_reaction) {
-            Some(r) => r,
-            None => return,
-        };
-
-        let mut round = round_mutex.lock().await;
-        if let Err(e) = round
-            .handle_add_react(self.id, &ctx, add_reaction.clone())
-            .await
-        {
-            tracing::error!("Handling Reaction for Round: {}", e);
-            let error_msg = format!("Error handling Round: {}", e);
-            round.update_msg(&ctx, &error_msg).await;
-
-            drop(round);
-            drop(data);
-            let mut data = ctx.data.write().await;
-            let rounds = data.get_mut::<Rounds>().expect(
-                "The shared Rounds-Datastructure should always exist in a running Instance",
-            );
-            rounds.remove_from_reaction(&add_reaction);
-
-            return;
-        }
-
-        // If the Round is already marked as being done we should simply return early as there is
-        // nothing more for us to do
-        if !round.is_done() {
-            return;
-        }
-
-        drop(round);
-        drop(data);
-        let mut data = ctx.data.write().await;
-        let rounds = data
-            .get_mut::<Rounds>()
-            .expect("The shared Rounds-Datastructure should always exist in a running Instance");
-        rounds.remove_from_reaction(&add_reaction);
+        let storage = data.get::<BotStorage>().unwrap();
+        Self::update_sm(
+            add_reaction.guild_id.unwrap(),
+            add_reaction.message_id,
+            &ctx.http,
+            storage,
+            messages::Event::AddReaction {
+                reaction: add_reaction.clone(),
+            },
+        )
+        .await;
     }
 
     async fn reaction_remove(
@@ -178,15 +164,18 @@ impl EventHandler for Handler {
         };
 
         let data = ctx.data.read().await;
-        let rounds = get_rounds(&data);
+        let storage = data.get::<BotStorage>().unwrap();
 
-        let round_mutex = match rounds.get_from_reaction(&removed_reaction) {
-            Some(r) => r,
-            None => return,
-        };
-
-        let mut round = round_mutex.lock().await;
-        round.handle_remove_react(&ctx, removed_reaction).await;
+        Self::update_sm(
+            removed_reaction.guild_id.unwrap(),
+            removed_reaction.message_id,
+            &ctx.http,
+            storage,
+            messages::Event::RemoveReaction {
+                reaction: removed_reaction.clone(),
+            },
+        )
+        .await;
     }
 
     #[tracing::instrument(skip(self, ctx, new_message))]
@@ -198,51 +187,26 @@ impl EventHandler for Handler {
         let reply_id = ref_message.id;
 
         let data = ctx.data.read().await;
-        let role_count = data.get::<RoleCount>().expect("The shared Role-Count-Messages Datastructure should always exist in a running Instance");
-        let mut role_count = role_count.lock().await;
+        let storage = data.get::<BotStorage>().unwrap();
 
-        let round_id = match role_count.remove(&reply_id) {
-            Some(r) => r,
-            None => return,
-        };
-
-        let rounds = get_rounds(&data);
-
-        let round_mutex = match rounds.get(&round_id) {
-            Some(r) => r,
-            None => return,
-        };
-
-        let mut round = round_mutex.lock().await;
-        if let Err(e) = round.role_reply(self.id, &ctx, reply_id, new_message).await {
-            tracing::error!("{:?}", e);
-
-            round.update_msg(&ctx, &format!("{}", e)).await;
-
-            {
-                let mut data = ctx.data.write().await;
-                let rounds = data.get_mut::<Rounds>().expect(
-                    "The shared Rounds-Datastructure should always exist in a running Instance",
-                );
-                rounds.remove(&round_id);
-            }
-        }
+        Self::update_sm(
+            new_message.guild_id.unwrap(),
+            reply_id,
+            &ctx.http,
+            storage,
+            messages::Event::Reply {
+                message: new_message.clone(),
+            },
+        )
+        .await;
     }
 
     async fn guild_member_update(
         &self,
-        ctx: Context,
+        _ctx: Context,
         _old_if_available: Option<serenity::model::guild::Member>,
-        new: serenity::model::guild::Member,
+        _new: serenity::model::guild::Member,
     ) {
-        let data = ctx.data.read().await;
-        let rounds = get_rounds(&data);
-
-        if let Some(round_mutex) = rounds.get(&new.guild_id) {
-            let mut round = round_mutex.lock().await;
-            round.handle_member_update(&ctx, new).await;
-            return;
-        }
     }
 }
 
@@ -266,14 +230,6 @@ async fn list_roles(ctx: &Context, msg: &Message, _args: Args) -> CommandResult 
     commands::list_roles(ctx, msg).await
 }
 
-fn parse_bool(raw: &str) -> Option<bool> {
-    match raw {
-        "true" | "yes" | "y" => Some(true),
-        "false" | "no" | "n" => Some(false),
-        _ => None,
-    }
-}
-
 #[command]
 #[aliases("add-role")]
 async fn add_role(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
@@ -288,10 +244,10 @@ async fn remove_role(ctx: &Context, msg: &Message, args: Args) -> CommandResult 
 
 /// Initialize the Client instance with all the needed Data
 /// to function properly
-async fn init_bot_data(client: &Client, bot_storage: storage::Storage) {
+async fn init_bot_data(client: &Client, http: Arc<Http>, bot_storage: storage::Storage) {
+    notifier::run_notifier(http, bot_storage.clone()).await;
+
     let mut c_data = client.data.write().await;
-    c_data.insert::<Rounds>(RoundsMap::new(&metrics::REGISTRY));
-    c_data.insert::<RoleCount>(Mutex::new(HashMap::default()));
     c_data.insert::<BotStorage>(bot_storage);
 }
 
@@ -311,7 +267,7 @@ pub async fn start(token: String) {
         user.id
     };
 
-    let discord_storage = storage::discord::DiscordStorage::new(http);
+    let discord_storage = storage::discord::DiscordStorage::new(http.clone());
     let bot_storage = storage::Storage::new(discord_storage);
 
     let handler = Handler::new(bot_id, &metrics::REGISTRY);
@@ -330,7 +286,7 @@ pub async fn start(token: String) {
         .unwrap();
 
     // Initialize the Bots inner State
-    init_bot_data(&client, bot_storage).await;
+    init_bot_data(&client, http, bot_storage).await;
 
     // Actually run the Bot
     if let Err(e) = client.start().await {

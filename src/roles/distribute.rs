@@ -66,7 +66,15 @@ where
         let nested_role = nested_roles.remove(index);
 
         let user = participants.pop().unwrap();
-        let instance = nested_role.to_instance(&mut non_nested_roles, rng).unwrap();
+        let instance = nested_role
+            .to_instance(&mut || {
+                if non_nested_roles.is_empty() {
+                    unreachable!("We should have already returned an error if there are not enough roles to Distribute");
+                }
+
+                let index: usize = rng.gen_range(0..non_nested_roles.len());
+                non_nested_roles.remove(index)
+            });
 
         result.insert(user, instance);
     }
@@ -75,7 +83,9 @@ where
         let role = non_nested_roles.remove(index);
 
         let user = participants.pop().unwrap();
-        let instance = role.to_instance(&mut non_nested_roles, rng).unwrap();
+        let instance = role.to_instance(&mut || {
+            unreachable!("We only instantiate Roles that dont mask another Role in this place")
+        });
 
         result.insert(user, instance);
     }

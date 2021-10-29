@@ -1,19 +1,23 @@
-use std::{collections::BTreeMap, error::Error, fmt::Display};
-
-use serenity::model::{
-    channel::{PermissionOverwrite, PermissionOverwriteType},
-    id::{ChannelId, RoleId, UserId},
-    Permissions,
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    error::Error,
+    fmt::Display,
 };
 
-use crate::{
-    roles::{self, WereWolfRoleInstance},
-    rounds::BotContext,
+use serenity::{
+    http::Http,
+    model::{
+        channel::{PermissionOverwrite, PermissionOverwriteType},
+        id::{ChannelId, GuildId, RoleId, UserId},
+        Permissions,
+    },
 };
+
+use crate::roles::{self, WereWolfRoleConfig, WereWolfRoleInstance};
 
 use super::{
     channels::{self, SetupChannelError},
-    RoleCounts, RoundState,
+    RoleCounts,
 };
 
 /// Generates the Permission-Settings to allow the given User to access
@@ -58,16 +62,35 @@ impl Display for StartError {
 }
 impl Error for StartError {}
 
+pub struct StartSource {
+    pub participants: Vec<UserId>,
+    pub roles: BTreeMap<WereWolfRoleConfig, usize>,
+    pub guild: GuildId,
+    pub mods: BTreeSet<UserId>,
+}
+/*
+impl From<&RoundState<RoleCounts>> for StartSource {
+    fn from(state: &RoundState<RoleCounts>) -> Self {
+        Self {
+            participants: state.state.participants.clone(),
+            roles: state.state.roles.clone(),
+            guild: state.guild,
+            mods: state.mods.clone(),
+        }
+    }
+}
+*/
+
 /// Handles all the Setup-Stuff for starting the actual Round based on the
 /// Configuration
-#[tracing::instrument(skip(source, dead_role_id, ctx))]
-pub async fn start(
+#[tracing::instrument(skip(raw_source, dead_role_id, ctx))]
+pub async fn start<S>(
     bot_id: UserId,
-    source: &RoundState<RoleCounts>,
+    raw_source: S,
     dead_role_name: &str,
     dead_role_id: RoleId,
     everyone_role: RoleId,
-    ctx: &dyn BotContext,
+    ctx: &Http,
 ) -> Result<
     (
         BTreeMap<UserId, WereWolfRoleInstance>,
@@ -75,7 +98,12 @@ pub async fn start(
         BTreeMap<String, ChannelId>,
     ),
     StartError,
-> {
+>
+where
+    S: Into<StartSource>,
+{
+    let source = raw_source.into();
+
     let default_permissions: Vec<PermissionOverwrite> = vec![
         PermissionOverwrite {
             allow: Permissions::READ_MESSAGES,
@@ -94,15 +122,12 @@ pub async fn start(
         },
     ];
 
-    let participants = roles::distribute_roles(
-        source.state.participants.clone(),
-        source.state.roles.clone(),
-    )
-    .map_err(StartError::DistributingRoles)?;
+    let participants = roles::distribute_roles(source.participants.clone(), source.roles.clone())
+        .map_err(StartError::DistributingRoles)?;
 
     let guild_channel = source
         .guild
-        .channels(ctx.get_http())
+        .channels(ctx)
         .await
         .map_err(|_| StartError::LoadingChannels)?;
 
@@ -110,7 +135,7 @@ pub async fn start(
         .await
         .map_err(|_| StartError::SettingUpCategory)?;
 
-    let role_iter = source.state.roles.iter().map(|(role, _)| role);
+    let role_iter = source.roles.iter().map(|(role, _)| role);
     let role_channel = channels::setup_role_channels(
         role_iter,
         default_permissions.clone(),
@@ -144,7 +169,7 @@ pub async fn start(
                 .expect("There should be a Channel for the Role available");
 
             channel
-                .create_permission(ctx.get_http(), &access_permissions)
+                .create_permission(ctx, &access_permissions)
                 .await
                 .map_err(|_| StartError::AssignRolePermissions)?;
         }
@@ -163,7 +188,7 @@ and reorganize the relevant Channels to prepare for the next Round.
             ```", dead_role_name
         );
         mod_channel
-            .say(ctx.get_http(), info_msg)
+            .say(ctx, info_msg)
             .await
             .map_err(|_| StartError::SettingUpModeratorChannel)?;
 
@@ -172,18 +197,23 @@ and reorganize the relevant Channels to prepare for the next Round.
 
             for (user_id, role) in participants.iter() {
                 let user = user_id
-                    .to_user(ctx.get_http())
+                    .to_user(ctx)
                     .await
                     .map_err(|_| StartError::SettingUpModeratorChannel)?;
                 let name = user.name;
 
-                tmp.push_str(&format!("{}: {:?}\n", name, role));
+                let role_name = match role.masked_role() {
+                    Some(other) => format!("{} ({})", role.name(), other.name()),
+                    None => format!("{}", role.name()),
+                };
+
+                tmp.push_str(&format!("{}: {}\n", name, role_name));
             }
 
             tmp
         };
         mod_channel
-            .say(ctx.get_http(), msg)
+            .say(ctx, msg)
             .await
             .map_err(|_| StartError::SettingUpModeratorChannel)?;
     }

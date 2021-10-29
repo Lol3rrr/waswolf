@@ -19,10 +19,26 @@ jobs:
           override: true
       - name: Testing
         run: cargo test
+  test-statemachines:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Setting up Rust-Toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          default: true
+          override: true
+      - name: Move into Statemachines-Crate Directory
+        run: cd statemachines
+      - name: Testing Statemachines Crate
+        run: cargo test
 
   build:
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test, test-statemachines]
     if: github.ref == 'refs/heads/master'
     steps:
       - name: Checkout

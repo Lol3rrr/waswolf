@@ -1,25 +1,10 @@
 use serenity::{
-    client::Context,
-    framework::standard::CommandResult,
-    http::CacheHttp,
-    model::{channel::Message, id::GuildId},
-    prelude::Mutex,
+    client::Context, framework::standard::CommandResult, http::CacheHttp, model::channel::Message,
 };
 
-use crate::{
-    get_storage, roles::WereWolfRoleConfig, rounds::Round, storage::StorageBackend, util,
-    Reactions, Rounds, MOD_ROLE_NAME,
-};
+use crate::{util, MOD_ROLE_NAME};
 
-async fn get_role_configs(
-    ctx: &Context,
-    guild_id: GuildId,
-) -> Result<Vec<WereWolfRoleConfig>, Box<dyn std::error::Error + Send>> {
-    let data = ctx.data.read().await;
-    let storage = get_storage(&data);
-
-    storage.load_roles(guild_id).await
-}
+mod sm;
 
 #[tracing::instrument(skip(ctx, msg))]
 pub async fn werewolf(ctx: &Context, msg: &Message) -> CommandResult {
@@ -30,35 +15,6 @@ pub async fn werewolf(ctx: &Context, msg: &Message) -> CommandResult {
         None => return Ok(()),
     };
     let channel_id = msg.channel_id;
-
-    let role_configs = match get_role_configs(ctx, guild_id).await {
-        Ok(r) => r,
-        Err(e) => {
-            tracing::error!("Loading Roles: {:?}", e);
-            util::msgs::send_content(channel_id, ctx.http(), "Could not load Roles").await;
-
-            return Ok(());
-        }
-    };
-
-    let mut data = ctx.data.write().await;
-    let rounds = data
-        .get_mut::<Rounds>()
-        .expect("The shared Rounds-Datastructure should always exist in a running Instance");
-    if rounds.get(&guild_id).is_some() {
-        tracing::error!("There is already a Round running on the Guild");
-
-        util::msgs::send_content(
-            channel_id,
-            ctx.http(),
-            "There is already a running Round in this Guild",
-        )
-        .await;
-
-        return Ok(());
-    }
-
-    tracing::debug!("Starting new Round");
 
     let mod_role = match util::roles::find_role(MOD_ROLE_NAME, guild_id, ctx.http()).await {
         Ok(r) => r,
@@ -84,33 +40,48 @@ pub async fn werewolf(ctx: &Context, msg: &Message) -> CommandResult {
     };
     let mods = util::roles::role_users(mod_role, guild_id, ctx.http()).await;
 
-    let entry_msg = format!(
-        "Creating new Round.\nReact with:\n{}: Enter as a Player\n{}: Start the Round itself",
-        Reactions::Entry,
-        Reactions::Confirm
-    );
+    if !mods.contains(&msg.author.id) {
+        tracing::error!("Non Mod attempted to start Round");
+        util::msgs::send_content(
+            channel_id,
+            ctx.http(),
+            "Only Moderators/Game Masters can start a new Round",
+        )
+        .await;
 
-    let result = match channel_id
-        .send_message(&ctx.http, |m| {
-            m.content(entry_msg)
-                .reactions(&[Reactions::Entry, Reactions::Confirm])
-        })
-        .await
-    {
-        Ok(r) => r,
+        return Ok(());
+    }
+
+    if crate::SMMAP.reserve_running_game(guild_id).await.is_err() {
+        tracing::error!("Attempted to start new Round in Guild with running Round");
+        util::msgs::send_content(
+            channel_id,
+            ctx.http(),
+            "There already exists an ongoing Round",
+        )
+        .await;
+
+        return Ok(());
+    }
+
+    tracing::debug!("Starting new Round");
+
+    let bot_id = ctx.http.get_current_user().await.unwrap().id;
+
+    match sm::create(ctx, guild_id, channel_id, mods, bot_id).await {
+        Ok(round_sm) => {
+            let sm_msg_id = round_sm.message_id();
+
+            crate::SMMAP.add(sm_msg_id, round_sm);
+            crate::SMMAP
+                .mark_running_game(guild_id, sm_msg_id)
+                .await
+                .unwrap();
+        }
         Err(e) => {
-            tracing::error!("Sending New-Round Message: {:?}", e);
-            return Ok(());
+            tracing::error!("Creating Round Config State-Machine: {:?}", e);
         }
     };
-    let msg_id = result.id;
-
-    rounds.insert(
-        guild_id,
-        Mutex::new(Round::new(mods, msg_id, result.channel_id, guild_id, role_configs).await),
-    );
-
-    tracing::debug!("Started new Round");
 
     Ok(())
 }
